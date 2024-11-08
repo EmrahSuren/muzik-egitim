@@ -131,37 +131,6 @@ const TeacherAssessment: React.FC = () => {
     }
   };
 
-  // Seviye belirleme
-  let level: 'beginner' | 'intermediate' | 'advanced';
-  if (experienceLevel === 'Yeni başlıyorum') {
-    level = 'beginner';
-  } else if (experienceLevel === 'Temel bilgilere sahibim') {
-    level = 'beginner';
-  } else if (experienceLevel === 'Orta seviyedeyim') {
-    level = 'intermediate';
-  } else {
-    level = 'advanced';
-  }
-
-  // Enstrümana özel güçlü yönler ve gelişim alanları
-  const instrumentSpecificAdvice = {
-    piyano: {
-      strengths: ['Müziğe olan ilginiz', 'Öğrenme isteğiniz'],
-      areasToImprove: ['Nota okuma', 'El koordinasyonu', 'Ritim çalışması'],
-      path: 'Piyano için temel teknikler ve nota okuma ile başlayacağız.'
-    },
-    gitar: {
-      strengths: ['Müziğe olan ilginiz', 'Öğrenme isteğiniz'],
-      areasToImprove: ['Temel akorlar', 'Parmak teknikleri', 'Ritim kalıpları'],
-      path: 'Gitar için temel akorlar ve ritim kalıpları ile başlayacağız.'
-    },
-    davul: {
-      strengths: ['Müziğe olan ilginiz', 'Öğrenme isteğiniz'],
-      areasToImprove: ['Temel vuruş teknikleri', 'Ritim duygusu', 'Koordinasyon'],
-      path: 'Davul için temel vuruş teknikleri ve ritim çalışmaları ile başlayacağız.'
-    }
-  };
-
   const advice = instrumentSpecificAdvice[selectedInstrument];
 
   // Pratik süresine göre ek öneriler

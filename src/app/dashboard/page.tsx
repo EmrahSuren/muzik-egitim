@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Bell, Settings, User, LogOut, Music } from 'lucide-react';
 import Image from 'next/image';
-import { TeacherDialog, TeacherAssessment } from "@/components/ai-teacher";
+import { TeacherAssessment } from "@/components/ai-teacher";
 
 
 // TeacherSelection Component
@@ -346,7 +346,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </div>
-    </div>  
+    </div> 
   );
 }
