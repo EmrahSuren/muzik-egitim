@@ -38,6 +38,7 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
     }
   };
 
+  // Diyalog senaryosu
   const introScript = [
     {
       id: 1,
@@ -62,13 +63,13 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
     try {
       const message = introScript.find(msg => msg.id === messageId);
       if (!message) return;
-  
+
       // D-ID ile video oluştur
       const videoUrl = await generateVideo({
         text: message.text,
         gender: teacherGender
       });
-  
+
       setCurrentVideoUrl(videoUrl);
       if (videoRef.current) {
         videoRef.current.play();
@@ -76,6 +77,7 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
       }
     } catch (error) {
       console.error('Video generation error:', error);
+
       // Fallback olarak statik videoları kullan
       const gender = teacherGender;
       let fallbackUrl = '';
@@ -93,7 +95,7 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
         default:
           fallbackUrl = teacherVideos[gender].greeting;
       }
-  
+
       setCurrentVideoUrl(fallbackUrl);
       if (videoRef.current) {
         videoRef.current.play();
@@ -113,7 +115,7 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
 
       return () => clearTimeout(timer);
     }
-  }, [currentStep, introScript]);
+  }, [currentStep]);
 
   // Seçenek tıklandığında çalışacak fonksiyon
   const handleOption = (selectedOption: string, messageId: number) => {
@@ -127,6 +129,9 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
 
   return (
     <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-auto overflow-hidden">
+      {/* Kapatma butonu */}
+      <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700">X</button>
+
       {/* Video Alanı */}
       <div className="h-96 bg-gradient-to-b from-indigo-100 to-white relative">
         <video
@@ -179,47 +184,5 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
         </AnimatePresence>
       </div>
     </div>
-
-const changeVideo = async (messageId: number) => {
-    try {
-      const message = introScript.find(msg => msg.id === messageId);
-      if (!message) return;
-  
-      // D-ID ile video oluştur
-      const videoUrl = await generateVideo({
-        text: message.text,
-        gender: teacherGender
-      });
-  
-      setCurrentVideoUrl(videoUrl);
-      if (videoRef.current) {
-        videoRef.current.play();
-        setIsVideoPlaying(true);
-      }
-    } catch (error) {
-      console.error('Video generation error:', error);
-      // Fallback olarak statik videoları kullan
-      const gender = teacherGender;
-      let fallbackUrl = '';
-  
-      switch(messageId) {
-        case 1:
-          fallbackUrl = teacherVideos[gender].greeting;
-          break;
-        case 2:
-          fallbackUrl = teacherVideos[gender].ready;
-          break;
-        case 3:
-          fallbackUrl = teacherVideos[gender].excited;
-          break;
-        default:
-          fallbackUrl = teacherVideos[gender].greeting;
-      }
-  
-      setCurrentVideoUrl(fallbackUrl);
-      if (videoRef.current) {
-        videoRef.current.play();
-        setIsVideoPlaying(true);
-      }
-    }
-  };
+  );
+}
