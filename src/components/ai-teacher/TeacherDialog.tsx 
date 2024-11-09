@@ -1,99 +1,163 @@
-import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
-import { Teacher, TeacherDialog as TeacherDialogType } from '@/types/teacher';
+'use client';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
-interface TeacherDialogProps {
-  teacher: Teacher;
-  currentDialog: TeacherDialogType;
-  onOptionSelect?: (nextDialogId: string) => void;
-  onClose?: () => void;
+interface Message {
+  id: number;
+  text: string;
+  sender: 'ai' | 'user';
+  options?: string[];
 }
 
-const TeacherDialog: React.FC<TeacherDialogProps> = ({
-  teacher,
-  currentDialog,
-  onOptionSelect,
-  onClose
-}) => {
-  const [isTyping, setIsTyping] = useState(true);
-  const [displayedText, setDisplayedText] = useState('');
+interface TeacherDialogProps {
+  onClose: () => void;
+  teacherGender: 'male' | 'female';
+  studentName: string;
+  instrument: string;
+}
 
-  // Typing animasyonu efekti
+export default function TeacherDialog({ onClose, teacherGender, studentName, instrument }: TeacherDialogProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [currentVideoUrl, setCurrentVideoUrl] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [currentStep, setCurrentStep] = useState(0);
+
+  // Her mesaj için video URL'leri
+  const teacherVideos = {
+    male: {
+      greeting: '/teachers/male/greeting.mp4',
+      ready: '/teachers/male/ready.mp4',
+      excited: '/teachers/male/excited.mp4',
+    },
+    female: {
+      greeting: '/teachers/female/greeting.mp4',
+      ready: '/teachers/female/ready.mp4',
+      excited: '/teachers/female/excited.mp4',
+    }
+  };
+
+  const introScript = [
+    {
+      id: 1,
+      text: `Merhaba ${studentName}! Ben senin ${instrument} öğretmenin olacağım.`,
+      sender: 'ai'
+    },
+    {
+      id: 2,
+      text: 'Birlikte harika bir müzik yolculuğuna çıkacağız. Hazır mısın?',
+      sender: 'ai',
+      options: ['Evet, hazırım!', 'Biraz heyecanlıyım']
+    },
+    {
+      id: 3,
+      text: 'Mükemmel! Önce basit tekniklerle başlayacağız ve adım adım ilerleyeceğiz.',
+      sender: 'ai'
+    }
+  ];
+
+  // Video değiştirme fonksiyonu
+  const changeVideo = async (messageId: number) => {
+    const gender = teacherGender;
+    let videoUrl = '';
+
+    switch(messageId) {
+      case 1:
+        videoUrl = teacherVideos[gender].greeting;
+        break;
+      case 2:
+        videoUrl = teacherVideos[gender].ready;
+        break;
+      case 3:
+        videoUrl = teacherVideos[gender].excited;
+        break;
+      default:
+        videoUrl = teacherVideos[gender].greeting;
+    }
+
+    setCurrentVideoUrl(videoUrl);
+    if (videoRef.current) {
+      videoRef.current.play();
+      setIsVideoPlaying(true);
+    }
+  };
+
+  // Mesajları sırayla göstermek için useEffect
   useEffect(() => {
-    setIsTyping(true);
-    setDisplayedText('');
-    let index = 0;
-    
-    const interval = setInterval(() => {
-      if (index < currentDialog.content.length) {
-        setDisplayedText(prev => prev + currentDialog.content[index]);
-        index++;
-      } else {
-        setIsTyping(false);
-        clearInterval(interval);
-      }
-    }, 30); // Yazma hızı
+    if (currentStep < introScript.length) {
+      const timer = setTimeout(() => {
+        setMessages(prev => [...prev, introScript[currentStep]]);
+        changeVideo(introScript[currentStep].id);
+        setCurrentStep(prev => prev + 1);
+      }, 1500);
 
-    return () => clearInterval(interval);
-  }, [currentDialog.content]);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep, introScript]);
+
+  // Seçenek tıklandığında çalışacak fonksiyon
+  const handleOption = (selectedOption: string, messageId: number) => {
+    setMessages(prev => [...prev, {
+      id: messageId + 0.5,
+      text: selectedOption,
+      sender: 'user'
+    }]);
+    setCurrentStep(prev => prev + 1);
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="p-4 border-b flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`w-12 h-12 rounded-full overflow-hidden ${teacher.backgroundColor}`}>
-              <Image 
-                src={teacher.avatar}
-                alt={teacher.name}
-                width={48}
-                height={48}
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div>
-              <h3 className="font-semibold">{teacher.name}</h3>
-              <p className="text-sm text-gray-500">{teacher.personality.teachingStyle}</p>
-            </div>
-          </div>
-          {onClose && (
-            <button 
-              onClick={onClose}
-              className="text-gray-500 hover:text-gray-700"
+    <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-auto overflow-hidden">
+      {/* Video Alanı */}
+      <div className="h-96 bg-gradient-to-b from-indigo-100 to-white relative">
+        <video
+          ref={videoRef}
+          className="w-full h-full object-cover"
+          src={currentVideoUrl}
+          onEnded={() => setIsVideoPlaying(false)}
+          playsInline
+          muted={false}
+        />
+      </div>
+
+      {/* Mesajlaşma Alanı */}
+      <div className="p-6 h-96 overflow-y-auto">
+        <AnimatePresence>
+          {messages.map((message, index) => (
+            <motion.div
+              key={message.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className={`mb-4 ${message.sender === 'ai' ? 'text-left' : 'text-right'}`}
             >
-              ✕
-            </button>
-          )}
-        </div>
+              <div
+                className={`inline-block p-4 rounded-xl ${
+                  message.sender === 'ai'
+                    ? 'bg-indigo-100 text-gray-800'
+                    : 'bg-indigo-600 text-white'
+                }`}
+              >
+                {message.text}
+              </div>
 
-        {/* Dialog Content */}
-        <div className="p-6 flex-1 overflow-y-auto">
-          <div className="prose max-w-none">
-            <p>{displayedText}</p>
-            {isTyping && <span className="animate-pulse">|</span>}
-          </div>
-        </div>
-
-        {/* Options */}
-        {!isTyping && currentDialog.options && (
-          <div className="p-4 border-t bg-gray-50">
-            <div className="space-y-2">
-              {currentDialog.options.map((option) => (
-                <button
-                  key={option.id}
-                  onClick={() => onOptionSelect?.(option.next)}
-                  className="w-full p-3 text-left rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  {option.text}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+              {message.options && (
+                <div className="mt-4 space-y-2">
+                  {message.options.map((option, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleOption(option, message.id)}
+                      className="w-full p-3 text-left border rounded-lg hover:bg-gray-50"
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   );
-};
-
-export default TeacherDialog;
+}
