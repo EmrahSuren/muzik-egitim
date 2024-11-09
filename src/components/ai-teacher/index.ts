@@ -1,2 +1,1 @@
-
-export { default as TeacherAssessment } from './TeacherAssessment';
+export { default as TeacherDialog } from './TeacherDialog';

@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { generateVideo } from '@/services/videoService';
 
 interface Message {
   id: number;
@@ -58,27 +59,46 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
 
   // Video değiştirme fonksiyonu
   const changeVideo = async (messageId: number) => {
-    const gender = teacherGender;
-    let videoUrl = '';
-
-    switch(messageId) {
-      case 1:
-        videoUrl = teacherVideos[gender].greeting;
-        break;
-      case 2:
-        videoUrl = teacherVideos[gender].ready;
-        break;
-      case 3:
-        videoUrl = teacherVideos[gender].excited;
-        break;
-      default:
-        videoUrl = teacherVideos[gender].greeting;
-    }
-
-    setCurrentVideoUrl(videoUrl);
-    if (videoRef.current) {
-      videoRef.current.play();
-      setIsVideoPlaying(true);
+    try {
+      const message = introScript.find(msg => msg.id === messageId);
+      if (!message) return;
+  
+      // D-ID ile video oluştur
+      const videoUrl = await generateVideo({
+        text: message.text,
+        gender: teacherGender
+      });
+  
+      setCurrentVideoUrl(videoUrl);
+      if (videoRef.current) {
+        videoRef.current.play();
+        setIsVideoPlaying(true);
+      }
+    } catch (error) {
+      console.error('Video generation error:', error);
+      // Fallback olarak statik videoları kullan
+      const gender = teacherGender;
+      let fallbackUrl = '';
+  
+      switch(messageId) {
+        case 1:
+          fallbackUrl = teacherVideos[gender].greeting;
+          break;
+        case 2:
+          fallbackUrl = teacherVideos[gender].ready;
+          break;
+        case 3:
+          fallbackUrl = teacherVideos[gender].excited;
+          break;
+        default:
+          fallbackUrl = teacherVideos[gender].greeting;
+      }
+  
+      setCurrentVideoUrl(fallbackUrl);
+      if (videoRef.current) {
+        videoRef.current.play();
+        setIsVideoPlaying(true);
+      }
     }
   };
 
@@ -159,5 +179,47 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
         </AnimatePresence>
       </div>
     </div>
-  );
-}
+
+const changeVideo = async (messageId: number) => {
+    try {
+      const message = introScript.find(msg => msg.id === messageId);
+      if (!message) return;
+  
+      // D-ID ile video oluştur
+      const videoUrl = await generateVideo({
+        text: message.text,
+        gender: teacherGender
+      });
+  
+      setCurrentVideoUrl(videoUrl);
+      if (videoRef.current) {
+        videoRef.current.play();
+        setIsVideoPlaying(true);
+      }
+    } catch (error) {
+      console.error('Video generation error:', error);
+      // Fallback olarak statik videoları kullan
+      const gender = teacherGender;
+      let fallbackUrl = '';
+  
+      switch(messageId) {
+        case 1:
+          fallbackUrl = teacherVideos[gender].greeting;
+          break;
+        case 2:
+          fallbackUrl = teacherVideos[gender].ready;
+          break;
+        case 3:
+          fallbackUrl = teacherVideos[gender].excited;
+          break;
+        default:
+          fallbackUrl = teacherVideos[gender].greeting;
+      }
+  
+      setCurrentVideoUrl(fallbackUrl);
+      if (videoRef.current) {
+        videoRef.current.play();
+        setIsVideoPlaying(true);
+      }
+    }
+  };
