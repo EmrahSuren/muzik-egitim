@@ -1,13 +1,13 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { generateVideo } from '@/services/videoService';
+import React, { useRef, useState, useEffect } from 'react';
+import { Mic, Camera, Maximize, Send, PlayCircle } from 'lucide-react';
 
 interface Message {
   id: number;
   text: string;
   sender: 'ai' | 'user';
-  options?: string[];
+  type?: 'text' | 'link';
+  url?: string;
 }
 
 interface TeacherDialogProps {
@@ -19,170 +19,198 @@ interface TeacherDialogProps {
 
 export default function TeacherDialog({ onClose, teacherGender, studentName, instrument }: TeacherDialogProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const [currentVideoUrl, setCurrentVideoUrl] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
-  const [currentStep, setCurrentStep] = useState(0);
+  const [inputMessage, setInputMessage] = useState('');
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isMicActive, setIsMicActive] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(true);
 
-  // Her mesaj için video URL'leri
-  const teacherVideos = {
-    male: {
-      greeting: '/teachers/male/greeting.mp4',
-      ready: '/teachers/male/ready.mp4',
-      excited: '/teachers/male/excited.mp4',
-    },
-    female: {
-      greeting: '/teachers/female/greeting.mp4',
-      ready: '/teachers/female/ready.mp4',
-      excited: '/teachers/female/excited.mp4',
-    }
+  // Mesaj gönderme fonksiyonu
+  const sendMessage = () => {
+    if (inputMessage.trim() === '') return; // Boş mesaj gönderilmesini engelle
+    const newMessage = {
+      id: messages.length + 1,
+      text: inputMessage,
+      sender: 'user',
+      type: 'text',
+    };
+    setMessages((prev) => [...prev, newMessage]);
+    setInputMessage('');
+    
+    // AI öğretmenine mesaj gönderme işlemini burada başlatabilirsiniz
+    // örneğin, startStream fonksiyonunu tetikleyebilirsiniz.
   };
 
-  // Diyalog senaryosu
-  const introScript = [
-    {
-      id: 1,
-      text: `Merhaba ${studentName}! Ben senin ${instrument} öğretmenin olacağım.`,
-      sender: 'ai'
-    },
-    {
-      id: 2,
-      text: 'Birlikte harika bir müzik yolculuğuna çıkacağız. Hazır mısın?',
-      sender: 'ai',
-      options: ['Evet, hazırım!', 'Biraz heyecanlıyım']
-    },
-    {
-      id: 3,
-      text: 'Mükemmel! Önce basit tekniklerle başlayacağız ve adım adım ilerleyeceğiz.',
-      sender: 'ai'
-    }
-  ];
-
-  // Video değiştirme fonksiyonu
-  const changeVideo = async (messageId: number) => {
+  // Stream başlatma fonksiyonu
+  const startStream = async () => {
     try {
-      const message = introScript.find(msg => msg.id === messageId);
-      if (!message) return;
-
-      // D-ID ile video oluştur
-      const videoUrl = await generateVideo({
-        text: message.text,
-        gender: teacherGender
+      const response = await fetch('https://api.d-id.com/talks/streams', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${process.env.D_ID_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source_url: teacherGender === 'male' ? 
+            'URL_TO_MALE_TEACHER_IMAGE' : 
+            'URL_TO_FEMALE_TEACHER_IMAGE',
+          script: {
+            type: 'text',
+            input: `Merhaba ${studentName}! Ben senin ${instrument} öğretmenin olacağım.`,
+            provider: {
+              type: 'microsoft',
+              voice_id: teacherGender === 'male' ? 
+                'tr-TR-AhmetNeural' : 
+                'tr-TR-EmelNeural'
+            }
+          }
+        })
       });
 
-      setCurrentVideoUrl(videoUrl);
-      if (videoRef.current) {
-        videoRef.current.play();
-        setIsVideoPlaying(true);
-      }
+      const data = await response.json();
+      connectToStream(data.connection_details.session_id);
+      setIsStreaming(true);
     } catch (error) {
-      console.error('Video generation error:', error);
-
-      // Fallback olarak statik videoları kullan
-      const gender = teacherGender;
-      let fallbackUrl = '';
-  
-      switch(messageId) {
-        case 1:
-          fallbackUrl = teacherVideos[gender].greeting;
-          break;
-        case 2:
-          fallbackUrl = teacherVideos[gender].ready;
-          break;
-        case 3:
-          fallbackUrl = teacherVideos[gender].excited;
-          break;
-        default:
-          fallbackUrl = teacherVideos[gender].greeting;
-      }
-
-      setCurrentVideoUrl(fallbackUrl);
-      if (videoRef.current) {
-        videoRef.current.play();
-        setIsVideoPlaying(true);
-      }
+      console.error('Stream başlatma hatası:', error);
     }
   };
 
-  // Mesajları sırayla göstermek için useEffect
-  useEffect(() => {
-    if (currentStep < introScript.length) {
-      const timer = setTimeout(() => {
-        setMessages(prev => [...prev, introScript[currentStep]]);
-        changeVideo(introScript[currentStep].id);
-        setCurrentStep(prev => prev + 1);
-      }, 1500);
+   // useEffect ile akışı başlatma
+   useEffect(() => {
+    startStream();
+    return () => {
+      // Temizleme işlemi
+      if (videoRef.current) {
+        videoRef.current.src = '';
+      }
+    };
+  }, []);
 
-      return () => clearTimeout(timer);
+  // Mikrofon kontrolü
+  const toggleMicrophone = () => {
+    setIsMicActive(!isMicActive);
+    // Burada mikrofon erişimi ve ses analizi eklenecek
+  };
+
+  // Kamera kontrolü
+  const toggleCamera = () => {
+    setIsCameraActive(!isCameraActive);
+    if (videoRef.current) {
+      videoRef.current.style.display = isCameraActive ? 'none' : 'block';
     }
-  }, [currentStep]);
+  };
 
-  // Seçenek tıklandığında çalışacak fonksiyon
-  const handleOption = (selectedOption: string, messageId: number) => {
-    setMessages(prev => [...prev, {
-      id: messageId + 0.5,
-      text: selectedOption,
-      sender: 'user'
-    }]);
-    setCurrentStep(prev => prev + 1);
+  // WebSocket bağlantısı
+  const connectToStream = (sessionId: string) => {
+    const ws = new WebSocket(`wss://api.d-id.com/talks/streams/${sessionId}`);
+    
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      if (message.type === 'video_data') {
+        if (videoRef.current) {
+          const blob = new Blob([message.data], { type: 'video/mp4' });
+          videoRef.current.src = URL.createObjectURL(blob);
+        }
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket hatası:', error);
+      alert('Bir hata oluştu. Lütfen tekrar deneyin.'); // Kullanıcıya hata bildirimi
+    };
+
+    ws.onclose = () => {
+      setIsStreaming(false);
+    };
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-auto overflow-hidden">
-      {/* Kapatma butonu */}
-      <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700">X</button>
-
-      {/* Video Alanı */}
-      <div className="h-96 bg-gradient-to-b from-indigo-100 to-white relative">
+    <div className="flex flex-col h-[90vh] bg-white rounded-xl overflow-hidden">
+      {/* Video Alanı - Üst Kısım */}
+      <div className="relative flex-1 bg-gray-900">
         <video
           ref={videoRef}
-          className="w-full h-full object-cover"
-          src={currentVideoUrl}
-          onEnded={() => setIsVideoPlaying(false)}
+          autoPlay
           playsInline
-          muted={false}
+          className="w-full h-full object-cover"
         />
-      </div>
-
-      {/* Mesajlaşma Alanı */}
-      <div className="p-6 h-96 overflow-y-auto">
-        <AnimatePresence>
-          {messages.map((message, index) => (
-            <motion.div
-              key={message.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className={`mb-4 ${message.sender === 'ai' ? 'text-left' : 'text-right'}`}
-            >
-              <div
-                className={`inline-block p-4 rounded-xl ${
-                  message.sender === 'ai'
-                    ? 'bg-indigo-100 text-gray-800'
-                    : 'bg-indigo-600 text-white'
-                }`}
+  
+        {/* Kontrol Butonları */}
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
+          <button 
+            onClick={toggleMicrophone}
+            className={`p-3 ${isMicActive ? 'bg-indigo-600' : 'bg-gray-800'} rounded-full hover:opacity-90 transition-colors`}
+          >
+            <Mic className="w-6 h-6 text-white" />
+          </button>
+          <button 
+            onClick={toggleCamera}
+            className={`p-3 ${isCameraActive ? 'bg-indigo-600' : 'bg-gray-800'} rounded-full hover:opacity-90 transition-colors`}
+          >
+            <Camera className="w-6 h-6 text-white" />
+          </button>
+          <button 
+            onClick={() => setIsFullScreen(!isFullScreen)}
+            className="p-3 bg-gray-800 rounded-full hover:opacity-90 transition-colors"
+          >
+            <Maximize className="w-6 h-6 text-white" />
+          </button>
+        </div>
+      </div> {/* Eksik kapanış etiketi eklendi */}
+  
+      {/* Chat Alanı - Alt Kısım */}
+      <div className="h-1/3 border-t">
+        <div className="h-full flex flex-col">
+          {/* Mesajlar */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {messages.map((message) => (
+              <div 
+                key={message.id} 
+                className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'} mb-4`}
               >
-                {message.text}
+                {message.type === 'link' ? (
+                  <a 
+                    href={message.url} 
+                    className="flex items-center space-x-2 p-3 bg-indigo-100 rounded-lg hover:bg-indigo-200 transition-colors"
+                  >
+                    <PlayCircle className="w-4 h-4 text-indigo-600" />
+                    <span>{message.text}</span>
+                  </a>
+                ) : (
+                  <div 
+                    className={`p-3 rounded-lg max-w-[70%] ${
+                      message.sender === 'ai' 
+                        ? 'bg-gray-100' 
+                        : 'bg-indigo-600 text-white'
+                    }`}
+                  >
+                    {message.text}
+                  </div>
+                )}
               </div>
-
-              {message.options && (
-                <div className="mt-4 space-y-2">
-                  {message.options.map((option, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleOption(option, message.id)}
-                      className="w-full p-3 text-left border rounded-lg hover:bg-gray-50"
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          ))}
-        </AnimatePresence>
+            ))}
+          </div>
+  
+          {/* Input Alanı */}
+          <div className="p-4 border-t">
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                placeholder="Mesajınızı yazın..."
+                className="flex-1 p-2 border rounded-lg focus:outline-none focus:border-indigo-600"
+              />
+              <button 
+                className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                onClick={sendMessage}
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
-}
