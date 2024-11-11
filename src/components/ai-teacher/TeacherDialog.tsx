@@ -1,12 +1,13 @@
 'use client';
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Mic, Camera, Maximize, Send, PlayCircle } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 interface Message {
   id: number;
   text: string;
   sender: 'ai' | 'user';
-  type?: 'text' | 'link';
+  type?: 'text' | 'link' | 'error';
   url?: string;
 }
 
@@ -15,82 +16,189 @@ interface TeacherDialogProps {
   teacherGender: 'male' | 'female';
   studentName: string;
   instrument: string;
+  apiKey?: string;
+}
+interface StreamResponse {
+  status: string;
+  connection_details: {
+    session_id: string;
+    ice_servers: {
+      urls: string[];
+      username?: string;
+      credential?: string;
+    }[];
+  };
 }
 
-export default function TeacherDialog({ onClose, teacherGender, studentName, instrument }: TeacherDialogProps) {
+export default function TeacherDialog({ 
+  onClose, 
+  teacherGender, 
+  studentName, 
+  instrument,
+  apiKey 
+}: TeacherDialogProps) {
+  // State tanımlamaları
   const videoRef = useRef<HTMLVideoElement>(null);
+  const webSocketRef = useRef<WebSocket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isMicActive, setIsMicActive] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(true);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // D-ID API yapılandırması
+  const D_ID_API_CONFIG = {
+    baseUrl: 'https://api.d-id.com',
+    apiKey: apiKey || process.env.NEXT_PUBLIC_D_ID_API_KEY,
+    teacherImages: {
+      male: process.env.NEXT_PUBLIC_MALE_TEACHER_IMAGE,
+      female: process.env.NEXT_PUBLIC_FEMALE_TEACHER_IMAGE
+    }
+  };
 
   // Stream başlatma fonksiyonu
   const startStream = async () => {
     try {
-      const response = await fetch('https://api.d-id.com/talks/streams', {
+      if (!D_ID_API_CONFIG.apiKey) {
+        throw new Error('D-ID API anahtarı bulunamadı');
+      }
+
+      const response = await fetch(`${D_ID_API_CONFIG.baseUrl}/talks/streams`, {
         method: 'POST',
         headers: {
-          'Authorization': `Basic ${process.env.D_ID_API_KEY}`,
+          'Authorization': `Basic ${D_ID_API_CONFIG.apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          source_url: teacherGender === 'male' ? 
-            'URL_TO_MALE_TEACHER_IMAGE' : 
-            'URL_TO_FEMALE_TEACHER_IMAGE',
+          source_url: teacherGender === 'male' 
+            ? D_ID_API_CONFIG.teacherImages.male 
+            : D_ID_API_CONFIG.teacherImages.female,
           script: {
             type: 'text',
             input: `Merhaba ${studentName}! Ben senin ${instrument} öğretmenin olacağım.`,
             provider: {
               type: 'microsoft',
-              voice_id: teacherGender === 'male' ? 
-                'tr-TR-AhmetNeural' : 
-                'tr-TR-EmelNeural'
+              voice_id: teacherGender === 'male' 
+                ? 'tr-TR-AhmetNeural' 
+                : 'tr-TR-EmelNeural'
             }
           }
         })
       });
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(`D-ID API Hatası: ${response.status}`);
+      }
+
+      const data: StreamResponse = await response.json();
       connectToStream(data.connection_details.session_id);
       setIsStreaming(true);
+      toast.success('Görüşme başlatıldı');
     } catch (error) {
-      console.error('Stream başlatma hatası:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Bilinmeyen bir hata oluştu';
+      console.error('Stream başlatma hatası:', errorMessage);
+      toast.error(`Bağlantı hatası: ${errorMessage}`);
+      
+      setMessages(prev => [...prev, {
+        id: Date.now(),
+        text: `Bağlantı hatası oluştu. Lütfen tekrar deneyin. (${errorMessage})`,
+        sender: 'ai',
+        type: 'error'
+      }]);
     }
   };
 
   // WebSocket bağlantısı
   const connectToStream = (sessionId: string) => {
-    const ws = new WebSocket(`wss://api.d-id.com/talks/streams/${sessionId}`);
+    webSocketRef.current = new WebSocket(
+      `wss://api.d-id.com/talks/streams/${sessionId}`
+    );
     
-    ws.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      if (message.type === 'video_data') {
-        if (videoRef.current) {
+    webSocketRef.current.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'video_data' && videoRef.current) {
           const blob = new Blob([message.data], { type: 'video/mp4' });
           videoRef.current.src = URL.createObjectURL(blob);
         }
+      } catch (error) {
+        console.error('Video verisi işleme hatası:', error);
       }
     };
 
-    ws.onerror = (error) => {
+    webSocketRef.current.onerror = (error) => {
       console.error('WebSocket hatası:', error);
-      alert('Bir hata oluştu. Lütfen tekrar deneyin.'); // Kullanıcıya hata bildirimi
+      toast.error('Bağlantı hatası oluştu');
     };
 
-    ws.onclose = () => {
+    webSocketRef.current.onclose = () => {
       setIsStreaming(false);
+      toast.info('Görüşme sonlandı');
     };
+  };
+
+  // Ses kaydı başlatma
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorderRef.current.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        audioChunksRef.current = [];
+        await processAudioInput(audioBlob);
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      toast.success('Ses kaydı başlatıldı');
+    } catch (error) {
+      console.error('Mikrofon erişim hatası:', error);
+      toast.error('Mikrofon erişimi sağlanamadı');
+    }
+  };
+
+  // Ses kaydını durdurma
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      toast.success('Ses kaydı tamamlandı');
+    }
+  };
+
+  // Ses girişini işleme
+  const processAudioInput = async (audioBlob: Blob) => {
+    try {
+      // Burada ses tanıma API'si entegrasyonu yapılacak
+      // Örnek olarak Web Speech API kullanılabilir
+      toast.info('Ses işleniyor...');
+    } catch (error) {
+      console.error('Ses işleme hatası:', error);
+      toast.error('Ses işlenemedi');
+    }
   };
 
   // Mikrofon kontrolü
   const toggleMicrophone = () => {
+    if (!isMicActive) {
+      startRecording();
+    } else {
+      stopRecording();
+    }
     setIsMicActive(!isMicActive);
-    // Burada mikrofon erişimi ve ses analizi eklenecek
   };
 
   // Kamera kontrolü
@@ -150,18 +258,26 @@ const sendMessage = async () => {
   };
 
 // useEffect
+
+useEffect(() => {
+  messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+}, [messages]);
+
 useEffect(() => {
   startStream();
+  
   return () => {
+    if (webSocketRef.current) {
+      webSocketRef.current.close();
+    }
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+    }
     if (videoRef.current) {
       videoRef.current.src = '';
     }
   };
 }, []);
-
-useEffect(() => {
-  messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-}, [messages]);
 
   return (
     <div className="flex flex-col h-[90vh] bg-white rounded-xl overflow-hidden">
