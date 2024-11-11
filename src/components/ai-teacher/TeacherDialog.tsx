@@ -25,22 +25,9 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
   const [isStreaming, setIsStreaming] = useState(false);
   const [isMicActive, setIsMicActive] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isTyping, setIsTyping] = useState(false);
 
-  // Mesaj gönderme fonksiyonu
-  const sendMessage = () => {
-    if (inputMessage.trim() === '') return; // Boş mesaj gönderilmesini engelle
-    const newMessage = {
-      id: messages.length + 1,
-      text: inputMessage,
-      sender: 'user',
-      type: 'text',
-    };
-    setMessages((prev) => [...prev, newMessage]);
-    setInputMessage('');
-    
-    // AI öğretmenine mesaj gönderme işlemini burada başlatabilirsiniz
-    // örneğin, startStream fonksiyonunu tetikleyebilirsiniz.
-  };
 
   // Stream başlatma fonksiyonu
   const startStream = async () => {
@@ -76,31 +63,6 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
     }
   };
 
-   // useEffect ile akışı başlatma
-   useEffect(() => {
-    startStream();
-    return () => {
-      // Temizleme işlemi
-      if (videoRef.current) {
-        videoRef.current.src = '';
-      }
-    };
-  }, []);
-
-  // Mikrofon kontrolü
-  const toggleMicrophone = () => {
-    setIsMicActive(!isMicActive);
-    // Burada mikrofon erişimi ve ses analizi eklenecek
-  };
-
-  // Kamera kontrolü
-  const toggleCamera = () => {
-    setIsCameraActive(!isCameraActive);
-    if (videoRef.current) {
-      videoRef.current.style.display = isCameraActive ? 'none' : 'block';
-    }
-  };
-
   // WebSocket bağlantısı
   const connectToStream = (sessionId: string) => {
     const ws = new WebSocket(`wss://api.d-id.com/talks/streams/${sessionId}`);
@@ -125,17 +87,113 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
     };
   };
 
+  // Mikrofon kontrolü
+  const toggleMicrophone = () => {
+    setIsMicActive(!isMicActive);
+    // Burada mikrofon erişimi ve ses analizi eklenecek
+  };
+
+  // Kamera kontrolü
+  const toggleCamera = () => {
+    setIsCameraActive(!isCameraActive);
+    if (videoRef.current) {
+      videoRef.current.style.display = isCameraActive ? 'none' : 'block';
+    }
+  };
+
+  // Tam ekran kontrolü
+const toggleFullScreen = () => {
+  if (!document.fullscreenElement) {
+    // Tam ekrana geç
+    const videoContainer = document.querySelector('.video-container');
+    if (videoContainer?.requestFullscreen) {
+      videoContainer.requestFullscreen();
+    }
+  } else {
+    // Tam ekrandan çık
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    }
+  }
+  setIsFullScreen(!isFullScreen);
+};
+
+  // Mesaj gönderme fonksiyonu
+const sendMessage = async () => {
+  if (!inputMessage.trim()) return;
+
+    // Kullanıcı mesajını ekle
+    const userMessage: Message = {
+      id: messages.length + 1,
+      text: inputMessage,
+      sender: 'user',
+      type: 'text'
+    };
+    
+    setMessages(prev => [...prev, userMessage]);
+    setInputMessage('');
+    
+    // AI yazıyor efekti
+    setIsTyping(true);
+  
+    // AI yanıtını simüle et
+    setTimeout(() => {
+      const aiResponse: Message = {
+        id: messages.length + 2,
+        text: `Merhaba! ${instrument} eğitiminiz için size nasıl yardımcı olabilirim? Temel tekniklerden başlayıp, adım adım ilerleyebiliriz. Önce duruş ve tutuş pozisyonlarını öğreneceğiz.`,
+        sender: 'ai',
+        type: 'text'
+      };
+      setMessages(prev => [...prev, aiResponse]);
+      setIsTyping(false);
+    }, 1500);
+  };
+
+// useEffect
+useEffect(() => {
+  startStream();
+  return () => {
+    if (videoRef.current) {
+      videoRef.current.src = '';
+    }
+  };
+}, []);
+
+useEffect(() => {
+  messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+}, [messages]);
+
   return (
     <div className="flex flex-col h-[90vh] bg-white rounded-xl overflow-hidden">
       {/* Video Alanı - Üst Kısım */}
-      <div className="relative flex-1 bg-gray-900">
+      <div className="relative flex-1 bg-gray-900 video-container">
         <video
           ref={videoRef}
           autoPlay
           playsInline
           className="w-full h-full object-cover"
         />
-  
+
+        {/* Kapatma Butonu */}
+  <button 
+    onClick={onClose}
+    className="absolute top-4 right-4 z-50 p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
+  >
+    <svg 
+      className="w-6 h-6 text-white" 
+      fill="none" 
+      stroke="currentColor" 
+      viewBox="0 0 24 24"
+    >
+      <path 
+        strokeLinecap="round" 
+        strokeLinejoin="round" 
+        strokeWidth={2} 
+        d="M6 18L18 6M6 6l12 12" 
+      />
+    </svg>
+  </button>
+
         {/* Kontrol Butonları */}
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
           <button 
@@ -151,7 +209,7 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
             <Camera className="w-6 h-6 text-white" />
           </button>
           <button 
-            onClick={() => setIsFullScreen(!isFullScreen)}
+            onClick={toggleFullScreen}
             className="p-3 bg-gray-800 rounded-full hover:opacity-90 transition-colors"
           >
             <Maximize className="w-6 h-6 text-white" />
@@ -181,7 +239,7 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
                   <div 
                     className={`p-3 rounded-lg max-w-[70%] ${
                       message.sender === 'ai' 
-                        ? 'bg-gray-100' 
+                        ? 'bg-indigo-100 text-gray-800 shadow-sm font-medium' // Rengi, gölgeyi ve yazı kalınlığını güncelledik
                         : 'bg-indigo-600 text-white'
                     }`}
                   >
@@ -190,18 +248,33 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
                 )}
               </div>
             ))}
+            
+            {isTyping && (
+              <div className="flex items-center space-x-2 text-gray-500">
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }}></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '400ms' }}></div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
           </div>
   
           {/* Input Alanı */}
           <div className="p-4 border-t">
             <div className="flex space-x-2">
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Mesajınızı yazın..."
-                className="flex-1 p-2 border rounded-lg focus:outline-none focus:border-indigo-600"
-              />
+            <input
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder="Mesajınızı yazın..."
+              className="flex-1 p-2 border rounded-lg focus:outline-none focus:border-indigo-600"
+            />
               <button 
                 className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                 onClick={sendMessage}
@@ -213,4 +286,5 @@ export default function TeacherDialog({ onClose, teacherGender, studentName, ins
         </div>
       </div>
     </div>
-  );
+   ); 
+  } 

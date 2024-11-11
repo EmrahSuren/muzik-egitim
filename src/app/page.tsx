@@ -61,7 +61,7 @@ export default function Home() {
       {/* Bottom Section */}
       <div className="w-full max-w-md text-center">
         <h2 className="text-white text-3xl font-bold mb-8">
-          Günde sadece 15 dakika çalışarak enstrüman öğren
+          Günde sadece 20 dakika çalışarak enstrüman öğren
         </h2>
         
         {/* Progress Dots */}
