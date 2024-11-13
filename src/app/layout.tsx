@@ -1,4 +1,5 @@
 import { Toaster } from 'react-hot-toast';
+import './globals.css'; // Stilleri geri getirmek için
 
 export default function RootLayout({
   children,
@@ -7,16 +8,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
+      <body className="min-h-screen bg-slate-50">
         {children}
         <Toaster 
           position="top-right"
           toastOptions={{
             duration: 4000,
-            style: {
-              background: '#333',
-              color: '#fff',
-            },
           }}
         />
       </body>
