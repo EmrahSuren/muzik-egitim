@@ -1,1 +1,2 @@
-export { default as TeacherDialog } from './TeacherDialog';
+export { TeacherDialog } from './TeacherDialog';
+export { TeacherSelectionModal } from './TeacherSelectionModal';

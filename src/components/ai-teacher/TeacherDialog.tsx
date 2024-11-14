@@ -3,12 +3,15 @@ import { useState, useRef, useEffect } from 'react';
 import { Mic, Camera, Maximize, Send } from 'lucide-react';
 import { Message, TeacherDialogProps } from '@/types/ai-teacher';
 import { useAITeacher } from '@/hooks/useAITeacher';
+import { d_idService } from '@/services/d-id';
 
-export default function TeacherDialog({ studentName, instrument, onClose }: TeacherDialogProps) {
+export const TeacherDialog = ({ onClose, teacherGender, studentName, instrument }: TeacherDialogProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
+  const [isStreamActive, setIsStreamActive] = useState(false);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // AI Hook
@@ -25,10 +28,69 @@ export default function TeacherDialog({ studentName, instrument, onClose }: Teac
   }, [sendWelcomeMessage]);
 
   // Mesaj gönderme işlemi
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
-    sendMessage(inputMessage);
-    setInputMessage('');
+    
+    try {
+      // AI'ya mesaj gönder
+      await sendMessage(inputMessage);
+      
+      // D-ID'ye mesaj gönder
+      if (isStreamActive) {
+        await d_idService.sendNewText(inputMessage);
+      }
+      
+      setInputMessage('');
+    } catch (error) {
+      console.error('Mesaj gönderme hatası:', error);
+    }
+  };
+
+   // D-ID Stream başlatma
+   useEffect(() => {
+    const initStream = async () => {
+      try {
+        const initialMessage = `Merhaba ${studentName}! Ben senin ${instrument} öğretmeninim.`;
+        await d_idService.startStream('male', initialMessage);
+        setIsStreamActive(true);
+      } catch (error) {
+        console.error('Stream başlatma hatası:', error);
+        // Hata durumunda UI'da gösterilecek bir bildirim ekleyebiliriz
+      }
+    };
+
+    initStream();
+
+    // Cleanup
+    return () => {
+      d_idService.disconnect();
+      setIsStreamActive(false);
+    };
+  }, [studentName, instrument]);
+
+  
+
+  // Video kontrolü güncellendi
+  const toggleCamera = () => {
+    setIsCameraActive(!isCameraActive);
+    if (videoRef.current) {
+      videoRef.current.style.display = isCameraActive ? 'none' : 'block';
+    }
+  };
+
+  // Tam ekran kontrolü
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      const videoContainer = document.querySelector('.video-container');
+      if (videoContainer?.requestFullscreen) {
+        videoContainer.requestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+    setIsFullscreen(!isFullscreen);
   };
 
 
@@ -41,6 +103,16 @@ export default function TeacherDialog({ studentName, instrument, onClose }: Teac
           playsInline
           className="w-full h-full object-cover"
         />
+
+         {/* Loading State - Bunu ekleyin */}
+         {!isStreamActive && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75">
+            <div className="text-white flex flex-col items-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4"></div>
+              <div className="text-lg">Öğretmen bağlanıyor...</div>
+            </div>
+          </div>
+        )}
 
         <button 
           onClick={onClose}
