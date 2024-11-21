@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { Bell, Settings, User, LogOut, Music } from 'lucide-react';
 import Image from 'next/image';
 import { TeacherDialog, TeacherSelectionModal } from "@/components/ai-teacher";
+import { OpenAITest } from "@/components/OpenAITest";
+
 
 interface Teacher {
  id: number;
@@ -188,9 +190,12 @@ export default function Dashboard() {
                instrument="Gitar"
              />
            </div>
-         </div>
+         </div> 
        )}
-     </main>
+     </main><div>
+      <h1>Dashboard</h1>
+      <OpenAITest />
+    </div>
    </div>
  );
 }
