@@ -1,4 +1,3 @@
-// services/d-id.ts
 const BASE_URL = 'https://api.d-id.com';
 
 interface D_ID_CONFIG {
@@ -13,12 +12,11 @@ interface D_ID_CONFIG {
   };
 }
 
-// Yapılandırma
 const config: D_ID_CONFIG = {
-  apiKey: process.env.D_ID_API_KEY || '',
+  apiKey: process.env.NEXT_PUBLIC_D_ID_API_KEY!,
   avatars: {
-    male: "https://create-images-results.d-id.com/DefaultPresenters/William_m/image.jpeg",
-    female: "https://create-images-results.d-id.com/DefaultPresenters/Emma_f/image.jpeg"
+    male: process.env.NEXT_PUBLIC_MALE_TEACHER_IMAGE!,
+    female: process.env.NEXT_PUBLIC_FEMALE_TEACHER_IMAGE!
   },
   voices: {
     male: 'tr-TR-AhmetNeural',
@@ -26,7 +24,6 @@ const config: D_ID_CONFIG = {
   }
 };
 
-// Stream oluşturma ve yönetme
 interface StreamResponse {
   status: string;
   session_id: string;
@@ -38,13 +35,18 @@ interface StreamResponse {
 export class D_IDService {
   private webSocket: WebSocket | null = null;
 
-  // Stream başlatma
   async startStream(gender: 'male' | 'female', initialText: string) {
     try {
+      console.log('Starting stream with config:', {
+        gender,
+        avatar: config.avatars[gender],
+        voice: config.voices[gender]
+      });
+
       const response = await fetch(`${BASE_URL}/talks/streams`, {
         method: 'POST',
         headers: {
-          'Authorization': `Basic ${config.apiKey}`,
+          'Authorization': `Basic ${btoa(config.apiKey)}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -60,58 +62,92 @@ export class D_IDService {
         })
       });
 
+      console.log('Stream response status:', response.status);
+
       if (!response.ok) {
-        throw new Error(`D-ID API Hatası: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Stream error response:', errorText);
+        throw new Error(`D-ID API Error: ${response.status}`);
       }
 
       const data: StreamResponse = await response.json();
+      console.log('Stream created successfully:', data);
       return this.connectToStream(data.session_id);
+
     } catch (error) {
       console.error('Stream başlatma hatası:', error);
       throw error;
     }
   }
 
-  // WebSocket bağlantısı
   private connectToStream(sessionId: string) {
     return new Promise<WebSocket>((resolve, reject) => {
-      this.webSocket = new WebSocket(
-        `wss://api.d-id.com/talks/streams/${sessionId}`
-      );
+      try {
+        console.log('Connecting to WebSocket with session:', sessionId);
+        
+        this.webSocket = new WebSocket(
+          `wss://api.d-id.com/talks/streams/${sessionId}`
+        );
 
-      this.webSocket.onopen = () => resolve(this.webSocket!);
-      this.webSocket.onerror = (error) => reject(error);
+        this.webSocket.onopen = () => {
+          console.log('WebSocket connection opened');
+          resolve(this.webSocket!);
+        };
 
-      this.webSocket.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          if (message.type === 'video_data') {
-            // Video verisi geldiğinde işle
-            this.handleVideoData(message.data);
+        this.webSocket.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          reject(error);
+        };
+
+        this.webSocket.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.type === 'video_data') {
+              this.handleVideoData(message.data);
+            }
+          } catch (error) {
+            console.error('Video data processing error:', error);
           }
-        } catch (error) {
-          console.error('Video verisi işleme hatası:', error);
-        }
-      };
+        };
+
+        this.webSocket.onclose = () => {
+          console.log('WebSocket connection closed');
+        };
+
+      } catch (error) {
+        console.error('WebSocket connection error:', error);
+        reject(error);
+      }
     });
   }
 
-  // Video verisi işleme
-  private handleVideoData(data: any) {
-    // Video verisini işle ve UI'a gönder
-    const blob = new Blob([data], { type: 'video/mp4' });
-    return URL.createObjectURL(blob);
+  private handleVideoData(data: ArrayBuffer) {
+    try {
+      const blob = new Blob([data], { type: 'video/mp4' });
+      return URL.createObjectURL(blob);
+    } catch (error) {
+      console.error('Video data conversion error:', error);
+      throw error;
+    }
   }
 
-  // Yeni metin gönderme
   async sendNewText(text: string) {
-    if (!this.webSocket) throw new Error('Stream bağlantısı yok');
+    if (!this.webSocket) {
+      throw new Error('No active stream connection');
+    }
 
     try {
-      await fetch(`${BASE_URL}/talks/streams/${this.webSocket.url.split('/').pop()}`, {
+      const streamId = this.webSocket.url.split('/').pop();
+      
+      console.log('Sending new text to stream:', {
+        streamId,
+        text
+      });
+
+      const response = await fetch(`${BASE_URL}/talks/streams/${streamId}`, {
         method: 'POST',
         headers: {
-          'Authorization': `Basic ${config.apiKey}`,
+          'Authorization': `Basic ${btoa(config.apiKey)}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -120,22 +156,35 @@ export class D_IDService {
             input: text,
             provider: {
               type: 'microsoft',
-              voice_id: config.voices.male // veya female, duruma göre
+              voice_id: config.voices.male
             }
           }
         })
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Send text error response:', errorText);
+        throw new Error(`Send text error: ${response.status}`);
+      }
+
+      console.log('Text sent successfully');
+
     } catch (error) {
-      console.error('Metin gönderme hatası:', error);
+      console.error('Send text error:', error);
       throw error;
     }
   }
 
-  // Bağlantıyı kapat
   disconnect() {
     if (this.webSocket) {
-      this.webSocket.close();
-      this.webSocket = null;
+      try {
+        this.webSocket.close();
+        this.webSocket = null;
+        console.log('WebSocket connection closed successfully');
+      } catch (error) {
+        console.error('WebSocket close error:', error);
+      }
     }
   }
 }

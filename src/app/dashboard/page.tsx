@@ -1,10 +1,10 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Bell, Settings, User, LogOut, Music } from 'lucide-react';
 import Image from 'next/image';
-import { TeacherDialog, TeacherSelectionModal } from "@/components/ai-teacher";
+import TeacherDialog from "@/components/ai-teacher/TeacherDialog";
+import TeacherSelectionModal from "@/components/ai-teacher/TeacherSelectionModal";
 import { OpenAITest } from "@/components/OpenAITest";
-
 
 interface Teacher {
  id: number;
@@ -23,6 +23,15 @@ export default function Dashboard() {
  const [showTeacherDialog, setShowTeacherDialog] = useState(false);
  const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
  const [isProfileOpen, setIsProfileOpen] = useState(false);
+ const [isClient, setIsClient] = useState(false);
+
+ useEffect(() => {
+   setIsClient(true);
+ }, []);
+
+ if (!isClient) {
+   return null;
+ }
 
  const handleStartLesson = () => {
    setShowTeacherSelection(true);
@@ -192,10 +201,11 @@ export default function Dashboard() {
            </div>
          </div> 
        )}
-     </main><div>
-      <h1>Dashboard</h1>
-      <OpenAITest />
-    </div>
+     </main>
+     <div>
+       <h1>Dashboard</h1>
+       <OpenAITest />
+     </div>
    </div>
  );
 }

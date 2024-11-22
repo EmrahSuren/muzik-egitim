@@ -1,98 +1,136 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { Mic, Camera, Maximize, Send } from 'lucide-react';
-import { Message, TeacherDialogProps } from '@/types/ai-teacher';
-import { useAITeacher } from '@/hooks/useAITeacher';
+import type { Message, TeacherDialogProps } from '@/types/ai-teacher';
 import { d_idService } from '@/services/d-id';
+import { openAIServiceInstance } from '@/services/openai';
 
-export const TeacherDialog = ({ onClose, teacherGender, studentName, instrument }: TeacherDialogProps) => {
+const TeacherDialog: React.FC<TeacherDialogProps> = ({ 
+  studentName, 
+  instrument, 
+  teacherGender,
+  onClose 
+}) => {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [isStreamActive, setIsStreamActive] = useState(false);
-  
+  const [isMounted, setIsMounted] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // AI Hook
-  const {
-    messages,
-    isTyping,
-    sendMessage,
-    sendWelcomeMessage
-  } = useAITeacher({ studentName, instrument });
-
-  // Hook kullanımı
   useEffect(() => {
-    sendWelcomeMessage();
-  }, [sendWelcomeMessage]);
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
 
-  // Mesaj gönderme işlemi
-  const handleSendMessage = async () => {
-    if (!inputMessage.trim()) return;
-    
-    try {
-      // AI'ya mesaj gönder
-      await sendMessage(inputMessage);
-      
-      // D-ID'ye mesaj gönder
-      if (isStreamActive) {
-        await d_idService.sendNewText(inputMessage);
-      }
-      
-      setInputMessage('');
-    } catch (error) {
-      console.error('Mesaj gönderme hatası:', error);
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  };
+  }, [messages]);
 
-   // D-ID Stream başlatma
-   useEffect(() => {
-    const initStream = async () => {
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const initializeTeacher = async () => {
       try {
-        const initialMessage = `Merhaba ${studentName}! Ben senin ${instrument} öğretmeninim.`;
-        await d_idService.startStream('male', initialMessage);
+        setError(null);
+        const welcomeMessage: Message = {
+          id: Date.now(),
+          content: `Merhaba ${studentName}! Ben senin ${instrument} öğretmeninim.`,
+          sender: 'ai',
+          type: 'text',
+        };
+        setMessages([welcomeMessage]);
+
+        await d_idService.startStream(teacherGender, welcomeMessage.content);
         setIsStreamActive(true);
       } catch (error) {
-        console.error('Stream başlatma hatası:', error);
-        // Hata durumunda UI'da gösterilecek bir bildirim ekleyebiliriz
+        console.error('Başlatma hatası:', error);
+        setError('Öğretmen bağlantısı kurulamadı. Lütfen tekrar deneyin.');
       }
     };
 
-    initStream();
+    initializeTeacher();
 
-    // Cleanup
     return () => {
       d_idService.disconnect();
       setIsStreamActive(false);
     };
-  }, [studentName, instrument]);
+  }, [isMounted, studentName, instrument, teacherGender]);
 
-  
+  const handleSendMessage = async () => {
+    if (!inputMessage.trim() || isTyping) return;
 
-  // Video kontrolü güncellendi
+    try {
+      const userMessage: Message = {
+        id: Date.now(),
+        content: inputMessage,
+        sender: 'user',
+        type: 'text',
+      };
+      setMessages(prev => [...prev, userMessage]);
+      setInputMessage('');
+      setIsTyping(true);
+
+      const aiResponse = await openAIServiceInstance.getMusicTeacherResponse(instrument, inputMessage);
+
+      const aiMessage: Message = {
+        id: Date.now() + 1,
+        content: aiResponse,
+        sender: 'ai',
+        type: 'text',
+      };
+      setMessages(prev => [...prev, aiMessage]);
+
+      if (isStreamActive) {
+        await d_idService.sendNewText(aiResponse);
+      }
+
+    } catch (error) {
+      console.error('Mesaj hatası:', error);
+      const errorMessage: Message = {
+        id: Date.now() + 1,
+        content: 'Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.',
+        sender: 'ai',
+        type: 'error',
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      setError('Mesaj gönderilemedi. Lütfen tekrar deneyin.');
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
   const toggleCamera = () => {
-    setIsCameraActive(!isCameraActive);
+    setIsCameraActive(prev => !prev);
     if (videoRef.current) {
       videoRef.current.style.display = isCameraActive ? 'none' : 'block';
     }
   };
 
-  // Tam ekran kontrolü
-  const toggleFullScreen = () => {
-    if (!document.fullscreenElement) {
+  const toggleFullScreen = async () => {
+    try {
       const videoContainer = document.querySelector('.video-container');
-      if (videoContainer?.requestFullscreen) {
-        videoContainer.requestFullscreen();
+      if (!document.fullscreenElement && videoContainer?.requestFullscreen) {
+        await videoContainer.requestFullscreen();
+        setIsFullscreen(true);
+      } else if (document.exitFullscreen) {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
       }
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      }
+    } catch (error) {
+      console.error('Fullscreen hatası:', error);
     }
-    setIsFullscreen(!isFullscreen);
   };
 
+  if (!isMounted) return null;
 
   return (
     <div className="flex flex-col h-[90vh] bg-white rounded-xl overflow-hidden">
@@ -101,22 +139,51 @@ export const TeacherDialog = ({ onClose, teacherGender, studentName, instrument 
           ref={videoRef}
           autoPlay
           playsInline
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover ${!isCameraActive ? 'hidden' : ''}`}
         />
 
-         {/* Loading State - Bunu ekleyin */}
-         {!isStreamActive && (
+        {!isStreamActive && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75">
             <div className="text-white flex flex-col items-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4"></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4" />
               <div className="text-lg">Öğretmen bağlanıyor...</div>
             </div>
           </div>
         )}
 
+        {error && (
+          <div className="absolute top-16 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg">
+            {error}
+          </div>
+        )}
+
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
+          <button 
+            onClick={() => setIsRecording(!isRecording)}
+            className={`p-3 ${isRecording ? 'bg-red-600' : 'bg-gray-800'} rounded-full hover:opacity-90 transition-opacity`}
+            title={isRecording ? 'Kaydı Durdur' : 'Kayda Başla'}
+          >
+            <Mic className="w-6 h-6 text-white" />
+          </button>
+          <button 
+            onClick={toggleCamera}
+            className={`p-3 ${isCameraActive ? 'bg-blue-600' : 'bg-gray-800'} rounded-full hover:opacity-90 transition-opacity`}
+            title={isCameraActive ? 'Kamerayı Kapat' : 'Kamerayı Aç'}
+          >
+            <Camera className="w-6 h-6 text-white" />
+          </button>
+          <button 
+            onClick={toggleFullScreen}
+            className="p-3 bg-gray-800 rounded-full hover:opacity-90 transition-opacity"
+            title={isFullscreen ? 'Tam Ekrandan Çık' : 'Tam Ekran'}
+          >
+            <Maximize className="w-6 h-6 text-white" />
+          </button>
+        </div>
+
         <button 
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 bg-gray-800 rounded-full"
+          className="absolute top-4 right-4 p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
         >
           <svg 
             className="w-6 h-6 text-white" 
@@ -132,49 +199,28 @@ export const TeacherDialog = ({ onClose, teacherGender, studentName, instrument 
             />
           </svg>
         </button>
-
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
-          <button 
-            onClick={() => setIsRecording(!isRecording)}
-            className={`p-3 ${isRecording ? 'bg-indigo-600' : 'bg-gray-800'} rounded-full`}
-          >
-            <Mic className="w-6 h-6 text-white" />
-          </button>
-          <button 
-            onClick={() => setIsCameraActive(!isCameraActive)}
-            className={`p-3 ${isCameraActive ? 'bg-indigo-600' : 'bg-gray-800'} rounded-full`}
-          >
-            <Camera className="w-6 h-6 text-white" />
-          </button>
-          <button 
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-3 bg-gray-800 rounded-full"
-          >
-            <Maximize className="w-6 h-6 text-white" />
-          </button>
-        </div>
       </div>
 
       <div className="h-1/3 border-t">
         <div className="flex flex-col h-full">
-          <div className="flex-1 overflow-y-auto p-4">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4">
             {messages.map((message) => (
               <div 
-                key={message.id} 
+                key={message.id}
                 className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'} mb-4`}
               >
                 <div 
                   className={`p-3 rounded-lg max-w-[70%] ${
-                    message.sender === 'ai' 
-                      ? 'bg-indigo-100 text-gray-800' 
-                      : 'bg-indigo-600 text-white'
+                    message.type === 'error' ? 'bg-red-100 text-red-700' :
+                    message.sender === 'ai' ? 'bg-blue-100 text-gray-800' : 
+                    'bg-blue-600 text-white'
                   }`}
                 >
                   {message.content}
                 </div>
               </div>
             ))}
-            
+
             {isTyping && (
               <div className="flex items-center space-x-2 text-gray-500">
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
@@ -197,11 +243,13 @@ export const TeacherDialog = ({ onClose, teacherGender, studentName, instrument 
                   }
                 }}
                 placeholder={`${studentName}, mesajınızı yazın...`}
-                className="flex-1 p-2 border rounded-lg focus:outline-none focus:border-indigo-600"
+                className="flex-1 p-2 border rounded-lg focus:outline-none focus:border-blue-600"
+                disabled={isTyping}
               />
               <button 
                 onClick={handleSendMessage}
-                className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                disabled={isTyping || !inputMessage.trim()}
+                className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Send className="w-5 h-5" />
               </button>
@@ -211,4 +259,6 @@ export const TeacherDialog = ({ onClose, teacherGender, studentName, instrument 
       </div>
     </div>
   );
-}
+};
+
+export default TeacherDialog;

@@ -1,76 +1,82 @@
+// hooks/useAITeacher.ts
 import { useState, useCallback } from 'react';
-import { Message } from '@/types/ai-teacher';
+import { openAIService } from '@/services/openai';
 
-interface UseAITeacherProps {
-  studentName: string;
-  instrument: string;
+interface Message {
+  id: string;
+  content: string;
+  sender: 'user' | 'ai';
+  type: 'text' | 'error';
 }
 
-export function useAITeacher({ studentName, instrument }: UseAITeacherProps) {
+export function useAITeacher({ studentName, instrument }: { studentName: string; instrument: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
 
-  // AI yanıtı oluşturma
-  const generateAIResponse = useCallback(async (message: string) => {
-    // Kullanıcının mesajına göre kişiselleştirilmiş yanıtlar
-    const responses = [
-      `"${message}" hakkında ${instrument} çalışırken dikkat etmeniz gereken nokta...`,
-      `${studentName}, ${message} konusunda haklısınız. Bir sonraki adımda şunu yapacağız...`,
-      `${instrument} çalarken ${message} tekniğini doğru uygulamanız çok önemli...`,
-      `Harika bir soru! ${message} konusunda ilerlemeniz çok iyi, şimdi şunu deneyelim...`,
-    ];
+  const addMessage = useCallback((message: Message) => {
+    setMessages(prev => [...prev, message]);
+  }, []);
 
-    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-    
-    return {
-      id: Date.now(),
-      content: randomResponse,
-      sender: 'ai' as const,
-      type: 'text' as const
-    };
-  }, [instrument, studentName]);
-
-  // Mesaj gönderme işlemi
   const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim()) return;
+    if (!content.trim()) {
+      throw new Error('Mesaj içeriği boş olamaz');
+    }
 
-    // Kullanıcı mesajını ekle
-    const userMessage: Message = {
-      id: Date.now(),
-      content,
-      sender: 'user',
-      type: 'text'
-    };
-
-    setMessages(prev => [...prev, userMessage]);
     setIsTyping(true);
 
     try {
-      // AI yanıtı al
-      const aiResponse = await generateAIResponse(content);
+      // Kullanıcı mesajını ekle
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        content,
+        sender: 'user',
+        type: 'text'
+      };
+      addMessage(userMessage);
+
+      // AI yanıtını al
+      const aiResponse = await openAIService.getMusicTeacherResponse(instrument, content);
       
-      // Gerçekçi bir gecikme ekle
-      setTimeout(() => {
-        setMessages(prev => [...prev, aiResponse]);
-        setIsTyping(false);
-      }, 1500);
+      // AI mesajını ekle
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: aiResponse,
+        sender: 'ai',
+        type: 'text'
+      };
+      addMessage(aiMessage);
+
+      return aiMessage;
 
     } catch (error) {
-      console.error('AI yanıt hatası:', error);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Mesaj işlenirken bir hata oluştu';
+
+      // Hata mesajını ekle
+      const errorMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        content: errorMessage,
+        sender: 'ai',
+        type: 'error'
+      };
+      addMessage(errorMsg);
+
+      throw error;
+    } finally {
       setIsTyping(false);
     }
-  }, [generateAIResponse]);
+  }, [instrument, addMessage]);
 
-  // İlk karşılama mesajı
   const sendWelcomeMessage = useCallback(() => {
     const welcomeMessage: Message = {
-      id: Date.now(),
-      content: `Merhaba ${studentName}! Ben senin ${instrument} öğretmeninim. Bugün neler öğrenmek istersin?`,
+      id: Date.now().toString(),
+      content: `Merhaba ${studentName}! Ben senin ${instrument} öğretmeninim. Nasıl yardımcı olabilirim?`,
       sender: 'ai',
       type: 'text'
     };
-    setMessages([welcomeMessage]);
-  }, [studentName, instrument]);
+    addMessage(welcomeMessage);
+  }, [studentName, instrument, addMessage]);
 
   return {
     messages,
