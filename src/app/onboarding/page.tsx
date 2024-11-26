@@ -1,11 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Guitar, Piano, ChevronRight } from 'lucide-react';
+import { Guitar, Piano, Drum, ChevronRight } from 'lucide-react';
+import { UserService } from '@/services/userService';
+import type { UserData, InstrumentType } from '@/types/user';
 
 export default function Onboarding() {
   const [step, setStep] = useState(1);
-  const [selectedInstrument, setSelectedInstrument] = useState('');
+  const [selectedInstrument, setSelectedInstrument] = useState<InstrumentType | ''>('');
   const [practiceGoal, setPracticeGoal] = useState('');
   const [notifications, setNotifications] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -14,9 +16,13 @@ export default function Onboarding() {
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    // Eğer kullanıcı zaten kayıtlı ise dashboard'a yönlendir
+    const existingUser = UserService.getUserData();
+    if (existingUser) {
+      router.push('/dashboard');
+    }
+  }, [router]);
 
-  // Adım başlıklarını tanımlayalım
   const steps = [
     { id: 1, title: 'Enstrüman' },
     { id: 2, title: 'Hedef' },
@@ -25,37 +31,86 @@ export default function Onboarding() {
   ];
 
   const instruments = [
-    { id: 'guitar', name: 'Gitar', icon: Guitar },
-    { id: 'piano', name: 'Piyano', icon: Piano },
-    { id: 'drums', name: 'Bateri', icon: Piano },
-    { id: 'violin', name: 'Keman', icon: Piano }
+    { id: 'guitar' as InstrumentType, name: 'Gitar', icon: Guitar },
+    { id: 'piano' as InstrumentType, name: 'Piyano', icon: Piano },
+    { id: 'drums' as InstrumentType, name: 'Bateri', icon: Drum }
   ];
 
   const practiceGoals = [
-    { id: '10', name: '10 dakika/gün', description: 'Başlangıç için ideal' },
-    { id: '20', name: '20 dakika/gün', description: 'Düzenli ilerleme' },
-    { id: '30', name: '30 dakika/gün', description: 'Hızlı gelişim' }
+    { 
+      id: '10', 
+      name: '10 dakika/gün', 
+      description: 'Temel teknikleri öğrenmek için ideal başlangıç süresi'
+    },
+    { 
+      id: '20', 
+      name: '20 dakika/gün', 
+      description: 'Düzenli pratik ile sürekli ilerleme sağlayın'
+    },
+    { 
+      id: '30', 
+      name: '30 dakika/gün', 
+      description: 'Yoğun pratik ile hızlı gelişim gösterin'
+    }
   ];
 
   const handleNext = () => {
     if (step < 4) {
       setStep(step + 1);
     } else {
-      // Tüm seçimler yapıldı, dashboard'a yönlendir
-      const query = new URLSearchParams({
-        instrument: selectedInstrument,
+      // Form validasyonu
+      if (!fullName.trim()) {
+        alert('Lütfen adınızı girin');
+        return;
+      }
+
+      // Kullanıcı verilerini hazırla
+      const userData: UserData = {
+        instrument: selectedInstrument as InstrumentType,
         practiceGoal,
-        notifications: notifications.toString(),
-        fullName
-      }).toString();
-      router.push(`/dashboard?${query}`);
+        notifications,
+        fullName: fullName.trim(),
+        registrationDate: new Date().toISOString(),
+        lastLoginDate: new Date().toISOString()
+      };
+
+      try {
+        // Verileri kaydet
+        UserService.saveUserData(userData);
+
+        // Başlangıç ilerleme verilerini oluştur
+        UserService.updateUserProgress({
+          totalPracticeTime: 0,
+          weeklyGoalProgress: 0,
+          completedLessons: 0,
+          currentLevel: 'beginner'
+        });
+
+        // Dashboard'a yönlendir
+        router.push('/dashboard');
+      } catch (error) {
+        console.error('Kayıt hatası:', error);
+        alert('Bir hata oluştu. Lütfen tekrar deneyin.');
+      }
     }
   };
 
-  if (!isClient) {
-    return null;
-  }
+  const isNextDisabled = () => {
+    switch (step) {
+      case 1:
+        return !selectedInstrument;
+      case 2:
+        return !practiceGoal;
+      case 4:
+        return !fullName.trim();
+      default:
+        return false;
+    }
+  };
 
+  if (!isClient) return null;
+
+  // ... JSX kısmı aynı kalacak, sadece button disabled logic'i değişecek ...
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-600 to-indigo-900 flex items-center justify-center p-4">
       <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-8">
@@ -97,7 +152,7 @@ export default function Onboarding() {
                     }`}
                   >
                     <instrument.icon className="w-12 h-12 mx-auto mb-4 text-indigo-600" />
-                    <p className="text-center font-medium">{instrument.name}</p>
+                    <p className="text-center font-medium text-gray-700">{instrument.name}</p>
                   </button>
                 ))}
               </div>
@@ -118,8 +173,8 @@ export default function Onboarding() {
                         : 'border-gray-200 hover:border-indigo-300'
                     }`}
                   >
-                    <p className="font-medium">{goal.name}</p>
-                    <p className="text-sm text-gray-600">{goal.description}</p>
+                    <p className="font-semibold text-gray-900">{goal.name}</p>
+                    <p className="text-sm font-medium text-gray-700">{goal.description}</p>
                   </button>
                 ))}
               </div>
@@ -131,13 +186,15 @@ export default function Onboarding() {
               <h2 className="text-2xl font-bold text-gray-800 mb-4">Bildirimler</h2>
               <div className="space-y-4">
                 <button
-                  onClick={() => setNotifications(true)}
+                  onClick={() => setNotifications(!notifications)}
                   className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
                     notifications ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300'
                   }`}
                 >
-                  <p className="font-medium">Bildirimleri Aç</p>
-                  <p className="text-sm text-gray-600">Günlük hatırlatmalar ile hedeflerine ulaş</p>
+                  <p className="font-medium">Bildirimleri {notifications ? 'Kapat' : 'Aç'}</p>
+                  <p className="text-sm font-medium text-gray-700">
+                    Günlük hatırlatmalar ile hedeflerine ulaş
+                  </p>
                 </button>
               </div>
             </>
@@ -163,13 +220,10 @@ export default function Onboarding() {
         <div className="flex justify-end">
           <button
             onClick={handleNext}
-            disabled={
-              (step === 1 && !selectedInstrument) ||
-              (step === 2 && !practiceGoal)
-            }
-            className="bg-indigo-600 text-white px-6 py-2 rounded-lg flex items-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700"
+            disabled={isNextDisabled()}
+            className="bg-indigo-600 text-white px-6 py-2 rounded-lg flex items-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-all"
           >
-            {step === 3 ? 'Başla' : 'Devam Et'}
+            {step === 4 ? 'Başla' : 'Devam Et'}
             <ChevronRight className="w-4 h-4 ml-2" />
           </button>
         </div>
