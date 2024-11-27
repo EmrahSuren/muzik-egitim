@@ -1,15 +1,23 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { Mic, Camera, Maximize, Send } from 'lucide-react';
+import { Mic, Camera, Maximize, Send, BookOpen } from 'lucide-react';
 import type { Message, TeacherDialogProps } from '@/types/ai-teacher';
+import type { Lesson } from '@/data/lessons';
 import { d_idService } from '@/services/d-id';
 import { openAIServiceInstance } from '@/services/openai';
 
-const TeacherDialog: React.FC<TeacherDialogProps> = ({ 
+interface ExtendedTeacherDialogProps extends TeacherDialogProps {
+  selectedLesson?: Lesson;
+  onLessonComplete?: () => void;
+}
+
+const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({ 
   studentName, 
   instrument, 
   teacherGender,
-  onClose 
+  onClose,
+  selectedLesson,
+  onLessonComplete 
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -20,6 +28,8 @@ const TeacherDialog: React.FC<TeacherDialogProps> = ({
   const [isMounted, setIsMounted] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lessonProgress, setLessonProgress] = useState(0);
+  const [topicIndex, setTopicIndex] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -41,12 +51,26 @@ const TeacherDialog: React.FC<TeacherDialogProps> = ({
     const initializeTeacher = async () => {
       try {
         setError(null);
-        const welcomeMessage: Message = {
-          id: Date.now(),
-          content: `Merhaba ${studentName}! Ben senin ${instrument} öğretmeninim.`,
-          sender: 'ai',
-          type: 'text',
-        };
+        let welcomeMessage: Message;
+
+        if (selectedLesson) {
+          welcomeMessage = {
+            id: Date.now(),
+            content: `Merhaba ${studentName}! "${selectedLesson.title}" dersine hoş geldin. 
+                     Bu derste ${selectedLesson.objectives[0].toLowerCase()} konusunda çalışacağız. 
+                     İlk konumuz: ${selectedLesson.topics[0]}. Başlamaya hazır mısın?`,
+            sender: 'ai',
+            type: 'text',
+          };
+        } else {
+          welcomeMessage = {
+            id: Date.now(),
+            content: `Merhaba ${studentName}! Ben senin ${instrument} öğretmeninim.`,
+            sender: 'ai',
+            type: 'text',
+          };
+        }
+
         setMessages([welcomeMessage]);
 
         await d_idService.startStream(teacherGender, welcomeMessage.content);
@@ -63,7 +87,25 @@ const TeacherDialog: React.FC<TeacherDialogProps> = ({
       d_idService.disconnect();
       setIsStreamActive(false);
     };
-  }, [isMounted, studentName, instrument, teacherGender]);
+  }, [isMounted, studentName, instrument, teacherGender, selectedLesson]);
+
+  const getLessonPrompt = (userMessage: string) => {
+    if (!selectedLesson) return userMessage;
+
+    return `
+      Sen deneyimli bir ${instrument} öğretmenisin.
+      Şu anki ders: "${selectedLesson.title}"
+      
+      Dersin hedefleri:
+      ${selectedLesson.objectives.join('\n')}
+      
+      Mevcut konu: ${selectedLesson.topics[topicIndex]}
+      
+      Öğrenci sorusu: ${userMessage}
+      
+      Lütfen dersin hedeflerine odaklanarak ve mevcut konuya uygun şekilde yanıt ver.
+    `;
+  };
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isTyping) return;
@@ -79,7 +121,8 @@ const TeacherDialog: React.FC<TeacherDialogProps> = ({
       setInputMessage('');
       setIsTyping(true);
 
-      const aiResponse = await openAIServiceInstance.getMusicTeacherResponse(instrument, inputMessage);
+      const prompt = getLessonPrompt(inputMessage);
+      const aiResponse = await openAIServiceInstance.getMusicTeacherResponse(instrument, prompt);
 
       const aiMessage: Message = {
         id: Date.now() + 1,
@@ -91,6 +134,20 @@ const TeacherDialog: React.FC<TeacherDialogProps> = ({
 
       if (isStreamActive) {
         await d_idService.sendNewText(aiResponse);
+      }
+
+      if (selectedLesson) {
+        const newProgress = Math.min(100, lessonProgress + 10);
+        setLessonProgress(newProgress);
+        
+        // İlerleme belirli bir eşiğe ulaştığında topic değişimi
+        if (lessonProgress < 90 && newProgress >= 90) {
+          handleTopicChange();
+        }
+
+        if (newProgress >= 100 && onLessonComplete) {
+          onLessonComplete();
+        }
       }
 
     } catch (error) {
@@ -105,6 +162,38 @@ const TeacherDialog: React.FC<TeacherDialogProps> = ({
       setError('Mesaj gönderilemedi. Lütfen tekrar deneyin.');
     } finally {
       setIsTyping(false);
+    }
+  };
+
+  const handleTopicChange = () => {
+    if (!selectedLesson) return;
+    const nextIndex = topicIndex + 1;
+    
+    if (nextIndex < selectedLesson.topics.length) {
+      setTopicIndex(nextIndex);
+      
+      // Yeni topic başladığında bilgilendirme mesajı
+      const topicMessage: Message = {
+        id: Date.now(),
+        content: `Harika! Şimdi "${selectedLesson.topics[nextIndex]}" konusuna geçiyoruz.`,
+        sender: 'ai',
+        type: 'text',
+      };
+      
+      setMessages(prev => [...prev, topicMessage]);
+      d_idService.sendNewText(topicMessage.content);
+    } else if (nextIndex === selectedLesson.topics.length) {
+      // Tüm topicler tamamlandığında
+      const completionMessage: Message = {
+        id: Date.now(),
+        content: `Tebrikler! "${selectedLesson.title}" dersini başarıyla tamamladın.`,
+        sender: 'ai',
+        type: 'text',
+      };
+      
+      setMessages(prev => [...prev, completionMessage]);
+      d_idService.sendNewText(completionMessage.content);
+      onLessonComplete?.();
     }
   };
 
@@ -134,6 +223,30 @@ const TeacherDialog: React.FC<TeacherDialogProps> = ({
 
   return (
     <div className="flex flex-col h-[90vh] bg-white rounded-xl overflow-hidden">
+      <div className="bg-blue-600 text-white p-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-xl font-bold">
+              {selectedLesson?.title || `${instrument} Dersi`}
+            </h2>
+            <p className="text-sm opacity-90">
+              {selectedLesson?.topics[topicIndex]}
+            </p>
+          </div>
+          {selectedLesson && (
+            <div className="flex items-center gap-2">
+              <div className="text-sm">İlerleme:</div>
+              <div className="w-32 h-2 bg-blue-800 rounded-full">
+                <div 
+                  className="h-full bg-white rounded-full transition-all duration-300"
+                  style={{ width: `${lessonProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="relative flex-1 bg-gray-900 video-container">
         <video
           ref={videoRef}
