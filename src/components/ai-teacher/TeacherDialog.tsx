@@ -5,6 +5,9 @@ import type { Message, TeacherDialogProps } from '@/types/ai-teacher';
 import type { Lesson } from '@/data/lessons';
 import { d_idService } from '@/services/d-id';
 import { openAIServiceInstance } from '@/services/openai';
+import { MusicAIService } from '@/services/music-ai';
+import { AudioAnalyzer } from '@/services/audio-analyzer';
+import type { MusicAnalysis } from '@/types/music-analysis';
 
 interface ExtendedTeacherDialogProps extends TeacherDialogProps {
   selectedLesson?: Lesson;
@@ -30,6 +33,9 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [lessonProgress, setLessonProgress] = useState(0);
   const [topicIndex, setTopicIndex] = useState(0);
+  const [performanceAnalysis, setPerformanceAnalysis] = useState<MusicAnalysis | null>(null);
+  const [audioAnalyzer] = useState(() => new AudioAnalyzer());
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -89,21 +95,87 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
     };
   }, [isMounted, studentName, instrument, teacherGender, selectedLesson]);
 
+  useEffect(() => {
+    if (!selectedLesson) return;
+
+    const analyzePerformance = async () => {
+      try {
+        const analysis = await MusicAIService.analyzePerformance(
+          instrument as 'gitar' | 'piyano' | 'bateri',
+          selectedLesson.level
+        );
+        setPerformanceAnalysis(analysis);
+      } catch (error) {
+        console.error('Performans analizi hatası:', error);
+      }
+    };
+
+    analyzePerformance();
+  }, [selectedLesson, instrument]);
+
   const getLessonPrompt = (userMessage: string) => {
     if (!selectedLesson) return userMessage;
 
+    const analysisPrompt = performanceAnalysis ? `
+      PERFORMANS ANALİZİ:
+      Ritim:
+      - Tempo: ${performanceAnalysis.rhythm.tempo} BPM
+      - Doğruluk: ${performanceAnalysis.rhythm.accuracy}%
+      - Öneriler: ${performanceAnalysis.rhythm.suggestions.join(', ')}
+
+      Armoni:
+      - Akor İlerleyişi: ${performanceAnalysis.harmony.chordProgression.join(' -> ')}
+      - Tonalite: ${performanceAnalysis.harmony.keySignature}
+      - Öneriler: ${performanceAnalysis.harmony.suggestions.join(', ')}
+      
+      Genel Performans:
+      - Puan: ${performanceAnalysis.performance.score}/100
+      - Geri Bildirim: ${performanceAnalysis.performance.feedback.join(', ')}
+      - İyileştirme Önerileri: ${performanceAnalysis.performance.improvements.join(', ')}
+    ` : '';
+
     return `
-      Sen deneyimli bir ${instrument} öğretmenisin.
-      Şu anki ders: "${selectedLesson.title}"
+      Sen deneyimli bir ${instrument} öğretmenisin ve aşağıdaki özel bilgileri kullanarak yanıt vermelisin:
+
+      DERS BİLGİLERİ:
+      Ders: "${selectedLesson.title}"
+      Seviye: ${selectedLesson.level}
+      Mevcut Konu: ${selectedLesson.topics[topicIndex]}
       
-      Dersin hedefleri:
+      HEDEFLER:
       ${selectedLesson.objectives.join('\n')}
-      
-      Mevcut konu: ${selectedLesson.topics[topicIndex]}
-      
+
+      ${analysisPrompt}
+
+      MÜZİK TEORİSİ VE TEKNİK:
+      1. Temel Müzik Bilgisi:
+      - Nota okuma ve yazma
+      - Ritim kalıpları
+      - Temel müzik teorisi
+
+      2. Enstrüman Teknikleri:
+      - Doğru tutuş ve duruş
+      - Temel çalım teknikleri
+      - İleri seviye teknikler
+
+      3. Performans Değerlendirmesi:
+      - Ritim doğruluğu ve kontrol
+      - Ton temizliği ve tını kalitesi
+      - Müzikal ifade ve dinamikler
+
+      4. Pratik Önerileri:
+      - Metronom ile çalışma
+      - Teknik egzersizler
+      - Örnek parça çalışmaları
+
       Öğrenci sorusu: ${userMessage}
-      
-      Lütfen dersin hedeflerine odaklanarak ve mevcut konuya uygun şekilde yanıt ver.
+
+      Lütfen yanıtını:
+      1. Teorik açıklama
+      2. Pratik uygulama önerileri
+      3. Performans değerlendirmesi
+      4. Sonraki adım için öneriler
+      şeklinde yapılandır.
     `;
   };
 
@@ -219,6 +291,49 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
     }
   };
 
+  const toggleRecording = async () => {
+    if (!isRecording) {
+      const started = await audioAnalyzer.startRecording();
+      if (started) {
+        setIsRecording(true);
+        startAnalysis();
+      }
+    } else {
+      audioAnalyzer.stopRecording();
+      setIsRecording(false);
+      setIsAnalyzing(false);
+    }
+  };
+
+  const startAnalysis = () => {
+    setIsAnalyzing(true);
+    let animationFrameId: number;
+
+    const analyzeLoop = async () => {
+      if (!isAnalyzing) return;
+
+      const audioData = await audioAnalyzer.analyzeAudio();
+      if (audioData) {
+        const analysis = await MusicAIService.analyzePerformance(
+          instrument as 'gitar' | 'piyano' | 'bateri',
+          selectedLesson?.level || 'beginner',
+          audioData
+        );
+        setPerformanceAnalysis(analysis);
+      }
+
+      animationFrameId = requestAnimationFrame(analyzeLoop);
+    };
+
+    analyzeLoop();
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  };
+
   if (!isMounted) return null;
 
   return (
@@ -272,7 +387,7 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
 
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
           <button 
-            onClick={() => setIsRecording(!isRecording)}
+            onClick={toggleRecording}
             className={`p-3 ${isRecording ? 'bg-red-600' : 'bg-gray-800'} rounded-full hover:opacity-90 transition-opacity`}
             title={isRecording ? 'Kaydı Durdur' : 'Kayda Başla'}
           >
@@ -313,6 +428,17 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
           </svg>
         </button>
       </div>
+
+      {performanceAnalysis && (
+        <div className="absolute bottom-20 left-4 bg-black bg-opacity-75 p-4 rounded-lg text-white text-sm">
+          <h3 className="font-bold mb-2">Performans Analizi</h3>
+          <div className="space-y-1">
+            <p>Ritim Doğruluğu: {performanceAnalysis.rhythm.accuracy}%</p>
+            <p>Ton: {performanceAnalysis.harmony.keySignature}</p>
+            <p>Skor: {performanceAnalysis.performance.score}/100</p>
+          </div>
+        </div>
+      )}
 
       <div className="h-1/3 border-t">
         <div className="flex flex-col h-full">
@@ -357,6 +483,7 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
                 }}
                 placeholder={`${studentName}, mesajınızı yazın...`}
                 className="flex-1 p-2 border rounded-lg focus:outline-none focus:border-blue-600"
+                style={{ color: '#000' }} // Yazı rengini koyu yapmak için
                 disabled={isTyping}
               />
               <button 
