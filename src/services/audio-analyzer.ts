@@ -1,5 +1,10 @@
 // src/services/audio-analyzer.ts
-export class AudioAnalyzer {
+interface AudioData {
+  buffer: Float32Array;
+  pitch: number;
+  rhythm: number;
+  volume: number;
+}export class AudioAnalyzer {
   private audioContext: AudioContext;
   private analyzer: AnalyserNode;
   private microphone: MediaStreamAudioSourceNode | null = null;
@@ -65,13 +70,14 @@ export class AudioAnalyzer {
     return Math.sqrt(sum / dataArray.length);
   }
 
-  async analyzeAudio() {
+  async analyzeAudio(): Promise<AudioData | null> {
     if (!this.microphone) return null;
-
+  
     const dataArray = new Float32Array(this.analyzer.frequencyBinCount);
     this.analyzer.getFloatTimeDomainData(dataArray);
-
+  
     return {
+      buffer: dataArray,
       pitch: this.detectPitch(dataArray),
       rhythm: this.detectRhythm(dataArray),
       volume: this.detectVolume(dataArray)

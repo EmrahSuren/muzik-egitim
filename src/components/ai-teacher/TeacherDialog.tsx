@@ -1,18 +1,78 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { Mic, Camera, Maximize, Send, BookOpen } from 'lucide-react';
+import { Mic, Camera, Maximize, Send  } from 'lucide-react';
 import type { Message, TeacherDialogProps } from '@/types/ai-teacher';
 import type { Lesson } from '@/data/lessons';
 import { d_idService } from '@/services/d-id';
 import { openAIServiceInstance } from '@/services/openai';
-import { MusicAIService } from '@/services/music-ai';
+import { musicAIServiceInstance } from '@/services/music-ai';
 import { AudioAnalyzer } from '@/services/audio-analyzer';
 import type { MusicAnalysis } from '@/types/music-analysis';
+import { SpeechRecognitionService } from '@/services/speech-recognition';
 
 interface ExtendedTeacherDialogProps extends TeacherDialogProps {
   selectedLesson?: Lesson;
   onLessonComplete?: () => void;
 }
+
+const RealTimeAnalysis = ({ analysis }: { analysis: MusicAnalysis }) => {
+  return (
+    <div className="absolute top-4 left-4 bg-black bg-opacity-75 p-4 rounded-lg text-white">
+      <h3 className="text-sm font-bold mb-3">Performans Analizi</h3>
+      
+      <div className="space-y-3">
+        {/* Ritim Analizi */}
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-xs opacity-70">Ritim Doğruluğu</span>
+            <span className="text-xs font-medium">{analysis.rhythm.accuracy}%</span>
+          </div>
+          <div className="w-48 h-1.5 bg-gray-700 rounded-full">
+            <div 
+              className="h-full bg-green-500 rounded-full transition-all duration-300"
+              style={{ width: `${analysis.rhythm.accuracy}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Armoni Bilgisi */}
+        <div>
+          <span className="text-xs opacity-70">Tonalite</span>
+          <p className="text-sm font-medium">{analysis.harmony.keySignature}</p>
+        </div>
+
+        {/* Genel Skor */}
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-xs opacity-70">Genel Performans</span>
+            <span className="text-xs font-medium">{analysis.performance.score}/100</span>
+          </div>
+          <div className="w-48 h-1.5 bg-gray-700 rounded-full">
+            <div 
+              className="h-full bg-blue-500 rounded-full transition-all duration-300"
+              style={{ width: `${analysis.performance.score}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Öneriler */}
+        {analysis.performance.improvements.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-gray-700">
+            <span className="text-xs opacity-70 block mb-1">Öneriler</span>
+            <ul className="text-xs space-y-1">
+              {analysis.performance.improvements.slice(0, 2).map((improvement, index) => (
+                <li key={index} className="flex items-start">
+                  <span className="mr-1">•</span>
+                  <span className="opacity-90">{improvement}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({ 
   studentName, 
@@ -36,6 +96,8 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
   const [performanceAnalysis, setPerformanceAnalysis] = useState<MusicAnalysis | null>(null);
   const [audioAnalyzer] = useState(() => new AudioAnalyzer());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [speechRecognition] = useState(() => new SpeechRecognitionService());
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -100,7 +162,7 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
 
     const analyzePerformance = async () => {
       try {
-        const analysis = await MusicAIService.analyzePerformance(
+        const analysis = await musicAIServiceInstance.analyzePerformance(
           instrument as 'gitar' | 'piyano' | 'bateri',
           selectedLesson.level
         );
@@ -112,6 +174,41 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
 
     analyzePerformance();
   }, [selectedLesson, instrument]);
+
+  useEffect(() => {
+    if (isAnalyzing && audioAnalyzer) {
+      let animationFrameId: number;
+      let isActive = true;
+
+      const analyzeLoop = async () => {
+        if (!isActive) return;
+
+        try {
+          const audioData = await audioAnalyzer.analyzeAudio();
+          if (audioData && isActive) {
+            const analysis = await musicAIServiceInstance.analyzePerformance(
+              instrument as 'gitar' | 'piyano' | 'bateri',
+              selectedLesson?.level || 'beginner',
+              audioData
+            );
+            setPerformanceAnalysis(analysis);
+          }
+          animationFrameId = requestAnimationFrame(analyzeLoop);
+        } catch (error) {
+          console.error('Analiz hatası:', error);
+        }
+      };
+
+      analyzeLoop();
+
+      return () => {
+        isActive = false;
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+      };
+    }
+  }, [isAnalyzing, audioAnalyzer, instrument, selectedLesson]);
 
   const getLessonPrompt = (userMessage: string) => {
     if (!selectedLesson) return userMessage;
@@ -293,14 +390,27 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
 
   const toggleRecording = async () => {
     if (!isRecording) {
+      setIsRecording(true);
+      setIsTranscribing(true);
+      
+      // Ses tanıma sistemini başlat
+      speechRecognition.startListening((text) => {
+        setInputMessage((prev) => prev + ' ' + text);
+        if (text.trim().endsWith('.')) {
+          handleSendMessage();
+        }
+      });
+
+      // Ses analizi başlat
       const started = await audioAnalyzer.startRecording();
       if (started) {
-        setIsRecording(true);
         startAnalysis();
       }
     } else {
-      audioAnalyzer.stopRecording();
       setIsRecording(false);
+      setIsTranscribing(false);
+      speechRecognition.stopListening();
+      audioAnalyzer.stopRecording();
       setIsAnalyzing(false);
     }
   };
@@ -314,7 +424,7 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
 
       const audioData = await audioAnalyzer.analyzeAudio();
       if (audioData) {
-        const analysis = await MusicAIService.analyzePerformance(
+        const analysis = await musicAIServiceInstance.analyzePerformance(
           instrument as 'gitar' | 'piyano' | 'bateri',
           selectedLesson?.level || 'beginner',
           audioData
@@ -385,6 +495,12 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
           </div>
         )}
 
+        {isTranscribing && (
+          <div className="absolute bottom-28 left-4 bg-blue-500 text-white px-3 py-1 rounded-full text-sm">
+            Sizi dinliyorum...
+          </div>
+        )}
+
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
           <button 
             onClick={toggleRecording}
@@ -409,6 +525,8 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
           </button>
         </div>
 
+        {performanceAnalysis && <RealTimeAnalysis analysis={performanceAnalysis} />}
+
         <button 
           onClick={onClose}
           className="absolute top-4 right-4 p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
@@ -428,17 +546,6 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
           </svg>
         </button>
       </div>
-
-      {performanceAnalysis && (
-        <div className="absolute bottom-20 left-4 bg-black bg-opacity-75 p-4 rounded-lg text-white text-sm">
-          <h3 className="font-bold mb-2">Performans Analizi</h3>
-          <div className="space-y-1">
-            <p>Ritim Doğruluğu: {performanceAnalysis.rhythm.accuracy}%</p>
-            <p>Ton: {performanceAnalysis.harmony.keySignature}</p>
-            <p>Skor: {performanceAnalysis.performance.score}/100</p>
-          </div>
-        </div>
-      )}
 
       <div className="h-1/3 border-t">
         <div className="flex flex-col h-full">

@@ -1,43 +1,60 @@
 // src/services/music-ai.ts
-interface MusicAnalysis {
-    rhythm: {
-      tempo: number;
-      accuracy: number;
-      suggestions: string[];
-    };
-    harmony: {
-      chordProgression: string[];
-      keySignature: string;
-      suggestions: string[];
-    };
-    performance: {
-      score: number;
-      feedback: string[];
-      improvements: string[];
-    };
+import { MagentaService } from '@/services/magenta';
+import type { MusicAnalysis } from '@/types/music-analysis';
+
+export class MusicAIService {
+  private static instance: MusicAIService;
+  private magentaService: MagentaService;
+
+  private constructor() {
+    this.magentaService = new MagentaService();
+    this.magentaService.initialize().catch(error => {
+      console.error('MagentaService initialization error:', error);
+    });
   }
-  
-  export class MusicAIService {
-    // instrument ve level parametrelerini kullanacak şekilde güncelliyoruz
-    static async analyzePerformance(
-      instrumentType: 'gitar' | 'piyano' | 'bateri',
-      studentLevel: 'beginner' | 'intermediate' | 'advanced'
-    ): Promise<MusicAnalysis> {
-      // Enstrüman ve seviyeye göre özelleştirilmiş analiz
-      const analysis = this.getInstrumentSpecificAnalysis(instrumentType, studentLevel);
-  
-      return analysis;
+
+  public static getInstance(): MusicAIService {
+    if (!this.instance) {
+      this.instance = new MusicAIService();
     }
-  
-    private static getInstrumentSpecificAnalysis(
-      instrumentType: 'gitar' | 'piyano' | 'bateri',
-      studentLevel: 'beginner' | 'intermediate' | 'advanced'
-    ): MusicAnalysis {
-      // Enstrümana özel analiz mantığı
-      const baseAnalysis: MusicAnalysis = {
+    return this.instance;
+  }
+
+  public async analyzePerformance(
+    instrument: 'gitar' | 'piyano' | 'bateri',
+    level: 'beginner' | 'intermediate' | 'advanced',
+    audioData?: Float32Array
+  ): Promise<MusicAnalysis> {
+    let magentaAnalysis = null;
+    try {
+      if (audioData) {
+        magentaAnalysis = await this.magentaService.analyzePerformance(audioData);
+      }
+
+      return {
+        rhythm: {
+          tempo: magentaAnalysis?.tempo || 120,
+          accuracy: 85, // Geçici değer
+          suggestions: ['Metronom ile çalışmayı deneyin']
+        },
+        harmony: {
+          chordProgression: ['Em', 'Am', 'D', 'G'],
+          keySignature: 'E minor',
+          suggestions: ['Akor geçişlerini daha temiz yapın']
+        },
+        performance: {
+          score: 80, // Geçici değer
+          feedback: ['Ritim doğruluğu iyi'],
+          improvements: ['Akor geçişlerini yavaşça pratik edin']
+        }
+      };
+    } catch (error) {
+      console.error('Performance analysis error:', error);
+      // Hata durumunda varsayılan değerler
+      return {
         rhythm: {
           tempo: 120,
-          accuracy: 85,
+          accuracy: 0,
           suggestions: []
         },
         harmony: {
@@ -46,53 +63,13 @@ interface MusicAnalysis {
           suggestions: []
         },
         performance: {
-          score: 80,
+          score: 0,
           feedback: [],
           improvements: []
         }
       };
-  
-      // Enstrümana göre özelleştirme
-      switch (instrumentType) {
-        case 'gitar':
-          return this.getGuitarAnalysis(baseAnalysis, studentLevel);
-        case 'piyano':
-          return this.getPianoAnalysis(baseAnalysis, studentLevel);
-        case 'bateri':
-          return this.getDrumAnalysis(baseAnalysis, studentLevel);
-        default:
-          return baseAnalysis;
-      }
-    }
-
-    private static getGuitarAnalysis(baseAnalysis: MusicAnalysis, level: 'beginner' | 'intermediate' | 'advanced'): MusicAnalysis {
-      switch (level) {
-        case 'beginner':
-          return {
-            ...baseAnalysis,
-            rhythm: {
-              tempo: 80,
-              accuracy: 70,
-              suggestions: ['Metronom ile yavaş tempoda çalış', 'Temel ritim kalıplarını tekrarla']
-            },
-            harmony: {
-              chordProgression: ['Em', 'Am', 'D', 'G'],
-              keySignature: 'E minor',
-              suggestions: ['Temel akorları temiz çal', 'Akor geçişlerini yavaşça pratik et']
-            }
-          };
-        // Diğer seviyeler için benzer analizler...
-      }
-      return baseAnalysis;
-    }
-  
-    private static getPianoAnalysis(baseAnalysis: MusicAnalysis, level: 'beginner' | 'intermediate' | 'advanced'): MusicAnalysis {
-      // Piyano için özel analizler
-      return baseAnalysis;
-    }
-  
-    private static getDrumAnalysis(baseAnalysis: MusicAnalysis, level: 'beginner' | 'intermediate' | 'advanced'): MusicAnalysis {
-      // Bateri için özel analizler
-      return baseAnalysis;
     }
   }
+}
+
+export const musicAIServiceInstance = MusicAIService.getInstance();
