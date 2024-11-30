@@ -1,5 +1,6 @@
 import { Toaster } from 'react-hot-toast';
-import './globals.css'; // Stilleri geri getirmek için
+import './globals.css';
+import { LessonProvider } from '@/contexts/LessonContext';
 
 export default function RootLayout({
   children,
@@ -9,13 +10,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-slate-50">
-        {children}
-        <Toaster 
-          position="top-right"
-          toastOptions={{
-            duration: 4000,
-          }}
-        />
+        <LessonProvider>
+          {children}
+          <Toaster 
+            position="top-right"
+            toastOptions={{
+              duration: 4000,
+            }}
+          />
+        </LessonProvider>
       </body>
     </html>
   );

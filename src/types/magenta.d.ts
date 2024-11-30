@@ -11,6 +11,21 @@ declare module '@magenta/music' {
       getPlayState(): string;
     }
   
+    export interface NoteSequence {
+      notes: Array<{
+    pitch: number;
+    startTime: number;
+    endTime: number;
+    velocity: number;
+  }>;
+  totalTime: number;
+  tempo: number;
+  timeSignature: {
+    numerator: number;
+    denominator: number;
+    }
+  }
+
     export class MusicRNN {
       constructor(checkpointURL: string);
       initialize(): Promise<void>;
@@ -26,20 +41,5 @@ declare module '@magenta/music' {
       loadSamples(): Promise<void>;
     }
   
-    export function transcribeFromAudioArray(audioData: Float32Array): Promise<NoteSequence>;
-  
-    export interface NoteSequence {
-      notes: Array<{
-        pitch: number;
-        startTime: number;
-        endTime: number;
-        velocity: number;
-      }>;
-      totalTime: number;
-      tempo: number;
-      timeSignature: {
-        numerator: number;
-        denominator: number;
-      };
+        export function transcribeFromAudioArray(audioData: Float32Array): Promise<NoteSequence>;
     }
-  }

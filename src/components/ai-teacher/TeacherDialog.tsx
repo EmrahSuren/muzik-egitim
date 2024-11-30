@@ -189,7 +189,7 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
             const analysis = await musicAIServiceInstance.analyzePerformance(
               instrument as 'gitar' | 'piyano' | 'bateri',
               selectedLesson?.level || 'beginner',
-              audioData
+              audioData.buffer
             );
             setPerformanceAnalysis(analysis);
           }
@@ -427,7 +427,7 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
         const analysis = await musicAIServiceInstance.analyzePerformance(
           instrument as 'gitar' | 'piyano' | 'bateri',
           selectedLesson?.level || 'beginner',
-          audioData
+          audioData.buffer
         );
         setPerformanceAnalysis(analysis);
       }

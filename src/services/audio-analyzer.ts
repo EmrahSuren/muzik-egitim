@@ -1,10 +1,24 @@
 // src/services/audio-analyzer.ts
-interface AudioData {
-  buffer: Float32Array;
+
+// AudioData tipi için özel interface tanımlaması
+type AudioDataBuffer = Float32Array & {
+  BYTES_PER_ELEMENT: number;
+  byteLength: number;
+  byteOffset: number;
+  copyWithin: (target: number, start: number, end?: number) => Float32Array;
+  set: (array: ArrayLike<number>, offset?: number) => void;
+  slice: (start?: number, end?: number) => Float32Array;
+  subarray: (begin?: number, end?: number) => Float32Array;
+};
+
+interface AudioAnalysis {
+  buffer: AudioDataBuffer;
   pitch: number;
   rhythm: number;
   volume: number;
-}export class AudioAnalyzer {
+}
+
+export class AudioAnalyzer {
   private audioContext: AudioContext;
   private analyzer: AnalyserNode;
   private microphone: MediaStreamAudioSourceNode | null = null;
@@ -38,8 +52,23 @@ interface AudioData {
     }
   }
 
+  async analyzeAudio(): Promise<AudioAnalysis | null> {
+    if (!this.microphone) return null;
+
+    const bufferLength = this.analyzer.frequencyBinCount;
+    const dataArray = new Float32Array(bufferLength) as AudioDataBuffer;
+    
+    this.analyzer.getFloatTimeDomainData(dataArray);
+
+    return {
+      buffer: dataArray,
+      pitch: this.detectPitch(dataArray),
+      rhythm: this.detectRhythm(dataArray),
+      volume: this.detectVolume(dataArray)
+    };
+  }
+
   private detectPitch(dataArray: Float32Array): number {
-    // Basit bir pitch detection implementasyonu
     let sum = 0;
     for (let i = 0; i < dataArray.length; i++) {
       sum += Math.abs(dataArray[i]);
@@ -48,7 +77,6 @@ interface AudioData {
   }
 
   private detectRhythm(dataArray: Float32Array): number {
-    // Basit bir ritim detection implementasyonu
     let peakCount = 0;
     const threshold = 0.5;
     for (let i = 1; i < dataArray.length - 1; i++) {
@@ -62,25 +90,10 @@ interface AudioData {
   }
 
   private detectVolume(dataArray: Float32Array): number {
-    // RMS (Root Mean Square) volume calculation
     let sum = 0;
     for (let i = 0; i < dataArray.length; i++) {
       sum += dataArray[i] * dataArray[i];
     }
     return Math.sqrt(sum / dataArray.length);
-  }
-
-  async analyzeAudio(): Promise<AudioData | null> {
-    if (!this.microphone) return null;
-  
-    const dataArray = new Float32Array(this.analyzer.frequencyBinCount);
-    this.analyzer.getFloatTimeDomainData(dataArray);
-  
-    return {
-      buffer: dataArray,
-      pitch: this.detectPitch(dataArray),
-      rhythm: this.detectRhythm(dataArray),
-      volume: this.detectVolume(dataArray)
-    };
   }
 }
