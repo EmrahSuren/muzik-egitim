@@ -12,7 +12,12 @@ export interface MusicAnalysis {
   };
   performance: {
     score: number;
-    feedback: string[];
     improvements: string[];
+    feedback: string[];
+  };
+  notes: {
+    pitch: number[];
+    timing: number[];
+    velocity: number[];
   };
 }

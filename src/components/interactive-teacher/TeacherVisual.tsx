@@ -2,124 +2,108 @@
 'use client';
 
 import React from 'react';
+import { GuitarVisual } from './instruments/GuitarVisual';
+import { PianoVisual } from './instruments/PianoVisual';
+import { DrumVisual } from './instruments/DrumVisual';
 
 interface TeacherVisualProps {
   instrument: 'gitar' | 'piyano' | 'bateri';
-  currentAction: string;
+  currentAction?: string;
   isTeaching: boolean;
+  lessonContent?: {
+    type: 'notation' | 'chord' | 'exercise';
+    title: string;
+    content: any;
+    visualAids?: string[];
+  };
+  currentPerformance?: {
+    accuracy: number;
+    rhythm: number;
+    tempo: number;
+    suggestions?: string[];
+  };
 }
-
-const GuitarFretboard = ({ currentChord }: { currentChord: string }) => {
-  // Gitar perdelerini gösteren SVG komponenti
-  return (
-    <div className="fretboard-container">
-      <svg viewBox="0 0 800 200" className="w-full h-full">
-        {/* Gitar telleri */}
-        {[0, 1, 2, 3, 4, 5].map((string) => (
-          <line
-            key={`string-${string}`}
-            x1="0"
-            y1={20 + string * 30}
-            x2="800"
-            y2={20 + string * 30}
-            stroke="gray"
-            strokeWidth="2"
-          />
-        ))}
-        
-        {/* Perdeler */}
-        {[0, 1, 2, 3, 4, 5, 6, 7].map((fret) => (
-          <line
-            key={`fret-${fret}`}
-            x1={100 * fret}
-            y1="0"
-            x2={100 * fret}
-            y2="200"
-            stroke="gray"
-            strokeWidth="4"
-          />
-        ))}
-      </svg>
-    </div>
-  );
-};
-
-const PianoKeys = ({ highlightedKeys }: { highlightedKeys: string }) => {
-  // Piyano tuşlarını gösteren SVG komponenti
-  return (
-    <div className="piano-container">
-      <svg viewBox="0 0 800 200" className="w-full h-full">
-        {/* Beyaz tuşlar */}
-        {[0, 1, 2, 3, 4, 5, 6, 7].map((key) => (
-          <rect
-            key={`white-key-${key}`}
-            x={key * 100}
-            y="0"
-            width="90"
-            height="200"
-            fill="white"
-            stroke="black"
-          />
-        ))}
-        
-        {/* Siyah tuşlar */}
-        {[0, 1, 3, 4, 5].map((key) => (
-          <rect
-            key={`black-key-${key}`}
-            x={75 + key * 100}
-            y="0"
-            width="50"
-            height="120"
-            fill="black"
-          />
-        ))}
-      </svg>
-    </div>
-  );
-};
-
-const DrumKit = ({ activeElements }: { activeElements: string }) => {
-  // Davul setini gösteren SVG komponenti
-  return (
-    <div className="drumkit-container">
-      <svg viewBox="0 0 800 600" className="w-full h-full">
-        {/* Bateri elementleri */}
-        <circle cx="400" cy="300" r="100" fill="none" stroke="gray" strokeWidth="2" /> {/* Bass drum */}
-        <circle cx="200" cy="200" r="60" fill="none" stroke="gray" strokeWidth="2" /> {/* Tom */}
-        <circle cx="600" cy="200" r="60" fill="none" stroke="gray" strokeWidth="2" /> {/* Tom */}
-        <circle cx="300" cy="150" r="40" fill="none" stroke="gray" strokeWidth="2" /> {/* Snare */}
-        <ellipse cx="650" cy="150" rx="40" ry="30" fill="none" stroke="gray" strokeWidth="2" /> {/* Hi-hat */}
-      </svg>
-    </div>
-  );
-};
 
 export const TeacherVisual: React.FC<TeacherVisualProps> = ({
   instrument,
   currentAction,
-  isTeaching
+  isTeaching,
+  lessonContent,
+  currentPerformance
 }) => {
-  const renderInstrumentGuide = () => {
+  const renderInstrumentVisual = () => {
     switch(instrument) {
       case 'gitar':
-        return <GuitarFretboard currentChord={currentAction} />;
+        return <GuitarVisual 
+          currentChord={currentAction} 
+          isPlaying={isTeaching}
+          highlightedFrets={lessonContent?.type === 'chord' ? lessonContent.content : []}
+        />;
       case 'piyano':
-        return <PianoKeys highlightedKeys={currentAction} />;
+        return <PianoVisual 
+          activeKeys={lessonContent?.type === 'notation' ? lessonContent.content : []}
+          isPlaying={isTeaching}
+        />;
       case 'bateri':
-        return <DrumKit activeElements={currentAction} />;
-      default:
-        return null;
+        return <DrumVisual 
+          activeParts={lessonContent?.type === 'exercise' ? lessonContent.content : []}
+          isPlaying={isTeaching}
+        />;
     }
   };
-  
+
   return (
-    <div className="relative w-full h-full bg-gray-900 rounded-xl overflow-hidden">
-      <div className="teacher-visual p-4">
-        {renderInstrumentGuide()}
+    <div className="relative w-full h-full">
+      <div className="instrument-container border rounded-lg overflow-hidden">
+        {renderInstrumentVisual()}
       </div>
+
       {isTeaching && (
-        <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-1 rounded-full text-sm">
+        <div className="absolute top-4 right-4 bg-blue-500 text-white px-3 py-1 rounded-full text-sm">
           Öğretmen açıklama yapıyor...
+        </div>
+      )}
+
+      {currentPerformance && (
+        <div className="absolute bottom-4 left-4 bg-black/70 backdrop-blur p-4 rounded-xl text-white">
+          <div className="space-y-2">
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-sm">Doğruluk</span>
+                <span className="text-sm">{currentPerformance.accuracy}%</span>
+              </div>
+              <div className="w-48 h-1.5 bg-gray-700 rounded-full">
+                <div 
+                  className="h-full bg-green-500 rounded-full transition-all"
+                  style={{ width: `${currentPerformance.accuracy}%` }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-sm">Ritim</span>
+                <span className="text-sm">{currentPerformance.rhythm}%</span>
+              </div>
+              <div className="w-48 h-1.5 bg-gray-700 rounded-full">
+                <div 
+                  className="h-full bg-blue-500 rounded-full transition-all"
+                  style={{ width: `${currentPerformance.rhythm}%` }}
+                />
+              </div>
+            </div>
+
+            {currentPerformance.suggestions && (
+              <div className="mt-2 text-sm">
+                <span className="text-gray-300">Öneriler:</span>
+                <ul className="mt-1 space-y-1">
+                  {currentPerformance.suggestions.map((suggestion, index) => (
+                    <li key={index} className="text-xs text-gray-300">• {suggestion}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

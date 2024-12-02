@@ -1,6 +1,8 @@
+// src/components/ai-teacher/TeacherDialog.tsx
 'use client';
-import { useState, useRef, useEffect } from 'react';
-import { Mic, Camera, Maximize, Send  } from 'lucide-react';
+
+import { useState, useRef, useEffect, ReactNode, JSX } from 'react';
+import { Mic, Camera, Maximize, Send, Music, X } from 'lucide-react';
 import type { Message, TeacherDialogProps } from '@/types/ai-teacher';
 import type { Lesson } from '@/data/lessons';
 import { d_idService } from '@/services/d-id';
@@ -9,13 +11,29 @@ import { musicAIServiceInstance } from '@/services/music-ai';
 import { AudioAnalyzer } from '@/services/audio-analyzer';
 import type { MusicAnalysis } from '@/types/music-analysis';
 import { SpeechRecognitionService } from '@/services/speech-recognition';
+import { TeacherVisual } from '@/components/interactive-teacher/TeacherVisual';
 
 interface ExtendedTeacherDialogProps extends TeacherDialogProps {
   selectedLesson?: Lesson;
   onLessonComplete?: () => void;
 }
-
-const RealTimeAnalysis = ({ analysis }: { analysis: MusicAnalysis }) => {
+interface LessonSegment {
+  type: 'video' | 'exercise' | 'practice' | 'theory';
+  content: {
+    title: string;
+    description: string;
+    duration: number;
+    visualAids: {
+      type: 'notation' | 'fretboard' | 'keyboard' | 'sheet';
+      content: string;
+    }[];
+    interactiveElements: {
+      type: 'playAlong' | 'recordAndAnalyze' | 'quiz';
+      config: any;
+    }[];
+  };
+}
+const RealTimeAnalysis = ({ analysis }: { analysis: MusicAnalysis }): JSX.Element => {
   return (
     <div className="absolute top-4 left-4 bg-black bg-opacity-75 p-4 rounded-lg text-white">
       <h3 className="text-sm font-bold mb-3">Performans Analizi</h3>
@@ -81,7 +99,8 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
   onClose,
   selectedLesson,
   onLessonComplete 
-}) => {
+}): JSX.Element => {
+  // State tanımlamaları
   const [messages, setMessages] = useState<Message[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(true);
@@ -98,117 +117,123 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [speechRecognition] = useState(() => new SpeechRecognitionService());
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [currentMessage, setCurrentMessage] = useState<Message | null>(null);
 
+  // Ref tanımlamaları
   const videoRef = useRef<HTMLVideoElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    setIsMounted(true);
-    return () => setIsMounted(false);
-  }, []);
+  // Mount effect
+useEffect(() => {
+  setIsMounted(true);
+  return () => setIsMounted(false);
+}, []);
 
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+// Chat scroll effect
+useEffect(() => {
+  if (chatContainerRef.current) {
+    chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+  }
+}, [messages]);
+
+// Teacher initialization effect
+useEffect(() => {
+  if (!isMounted) return;
+
+  const initializeTeacher = async () => {
+    try {
+      setError(null);
+      let welcomeMessage: Message;
+
+      if (selectedLesson) {
+        welcomeMessage = {
+          id: Date.now(),
+          content: `Merhaba ${studentName}! "${selectedLesson.title}" dersine hoş geldin. 
+                   Bu derste ${selectedLesson.objectives[0].toLowerCase()} konusunda çalışacağız. 
+                   İlk konumuz: ${selectedLesson.topics[0]}. Başlamaya hazır mısın?`,
+          sender: 'ai',
+          type: 'text',
+        };
+      } else {
+        welcomeMessage = {
+          id: Date.now(),
+          content: `Merhaba ${studentName}! Ben senin ${instrument} öğretmeninim.`,
+          sender: 'ai',
+          type: 'text',
+        };
+      }
+
+      setMessages([welcomeMessage]);
+      await d_idService.startStream(teacherGender, welcomeMessage.content);
+      setIsStreamActive(true);
+    } catch (error) {
+      console.error('Başlatma hatası:', error);
+      setError('Öğretmen bağlantısı kurulamadı. Lütfen tekrar deneyin.');
     }
-  }, [messages]);
+  };
 
-  useEffect(() => {
-    if (!isMounted) return;
+  initializeTeacher();
 
-    const initializeTeacher = async () => {
+  return () => {
+    d_idService.disconnect();
+    setIsStreamActive(false);
+  };
+}, [isMounted, studentName, instrument, teacherGender, selectedLesson]);
+
+// Performance analysis effect
+useEffect(() => {
+  if (!selectedLesson) return;
+
+  const analyzePerformance = async () => {
+    try {
+      const analysis = await musicAIServiceInstance.analyzePerformance(
+        instrument as 'gitar' | 'piyano' | 'bateri',
+        selectedLesson.level
+      );
+      setPerformanceAnalysis(analysis);
+    } catch (error) {
+      console.error('Performans analizi hatası:', error);
+    }
+  };
+
+  analyzePerformance();
+}, [selectedLesson, instrument]);
+
+// Audio analysis loop effect
+useEffect(() => {
+  if (isAnalyzing && audioAnalyzer) {
+    let animationFrameId: number;
+    let isActive = true;
+
+    const analyzeLoop = async () => {
+      if (!isActive) return;
+
       try {
-        setError(null);
-        let welcomeMessage: Message;
-
-        if (selectedLesson) {
-          welcomeMessage = {
-            id: Date.now(),
-            content: `Merhaba ${studentName}! "${selectedLesson.title}" dersine hoş geldin. 
-                     Bu derste ${selectedLesson.objectives[0].toLowerCase()} konusunda çalışacağız. 
-                     İlk konumuz: ${selectedLesson.topics[0]}. Başlamaya hazır mısın?`,
-            sender: 'ai',
-            type: 'text',
-          };
-        } else {
-          welcomeMessage = {
-            id: Date.now(),
-            content: `Merhaba ${studentName}! Ben senin ${instrument} öğretmeninim.`,
-            sender: 'ai',
-            type: 'text',
-          };
+        const audioData = await audioAnalyzer.analyzeAudio();
+        if (audioData && isActive) {
+          const analysis = await musicAIServiceInstance.analyzePerformance(
+            instrument as 'gitar' | 'piyano' | 'bateri',
+            selectedLesson?.level || 'beginner',
+            audioData.buffer
+          );
+          setPerformanceAnalysis(analysis);
         }
-
-        setMessages([welcomeMessage]);
-
-        await d_idService.startStream(teacherGender, welcomeMessage.content);
-        setIsStreamActive(true);
+        animationFrameId = requestAnimationFrame(analyzeLoop);
       } catch (error) {
-        console.error('Başlatma hatası:', error);
-        setError('Öğretmen bağlantısı kurulamadı. Lütfen tekrar deneyin.');
+        console.error('Analiz hatası:', error);
       }
     };
 
-    initializeTeacher();
+    analyzeLoop();
 
     return () => {
-      d_idService.disconnect();
-      setIsStreamActive(false);
-    };
-  }, [isMounted, studentName, instrument, teacherGender, selectedLesson]);
-
-  useEffect(() => {
-    if (!selectedLesson) return;
-
-    const analyzePerformance = async () => {
-      try {
-        const analysis = await musicAIServiceInstance.analyzePerformance(
-          instrument as 'gitar' | 'piyano' | 'bateri',
-          selectedLesson.level
-        );
-        setPerformanceAnalysis(analysis);
-      } catch (error) {
-        console.error('Performans analizi hatası:', error);
+      isActive = false;
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
       }
     };
-
-    analyzePerformance();
-  }, [selectedLesson, instrument]);
-
-  useEffect(() => {
-    if (isAnalyzing && audioAnalyzer) {
-      let animationFrameId: number;
-      let isActive = true;
-
-      const analyzeLoop = async () => {
-        if (!isActive) return;
-
-        try {
-          const audioData = await audioAnalyzer.analyzeAudio();
-          if (audioData && isActive) {
-            const analysis = await musicAIServiceInstance.analyzePerformance(
-              instrument as 'gitar' | 'piyano' | 'bateri',
-              selectedLesson?.level || 'beginner',
-              audioData.buffer
-            );
-            setPerformanceAnalysis(analysis);
-          }
-          animationFrameId = requestAnimationFrame(analyzeLoop);
-        } catch (error) {
-          console.error('Analiz hatası:', error);
-        }
-      };
-
-      analyzeLoop();
-
-      return () => {
-        isActive = false;
-        if (animationFrameId) {
-          cancelAnimationFrame(animationFrameId);
-        }
-      };
-    }
-  }, [isAnalyzing, audioAnalyzer, instrument, selectedLesson]);
+  }
+}, [isAnalyzing, audioAnalyzer, instrument, selectedLesson]);
 
   const getLessonPrompt = (userMessage: string) => {
     if (!selectedLesson) return userMessage;
@@ -278,8 +303,10 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isTyping) return;
-
+  
     try {
+
+      
       const userMessage: Message = {
         id: Date.now(),
         content: inputMessage,
@@ -289,10 +316,10 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
       setMessages(prev => [...prev, userMessage]);
       setInputMessage('');
       setIsTyping(true);
-
+  
       const prompt = getLessonPrompt(inputMessage);
       const aiResponse = await openAIServiceInstance.getMusicTeacherResponse(instrument, prompt);
-
+  
       const aiMessage: Message = {
         id: Date.now() + 1,
         content: aiResponse,
@@ -300,40 +327,18 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
         type: 'text',
       };
       setMessages(prev => [...prev, aiMessage]);
-
-      if (isStreamActive) {
-        await d_idService.sendNewText(aiResponse);
-      }
-
-      if (selectedLesson) {
-        const newProgress = Math.min(100, lessonProgress + 10);
-        setLessonProgress(newProgress);
-        
-        // İlerleme belirli bir eşiğe ulaştığında topic değişimi
-        if (lessonProgress < 90 && newProgress >= 90) {
-          handleTopicChange();
-        }
-
-        if (newProgress >= 100 && onLessonComplete) {
-          onLessonComplete();
-        }
-      }
-
+      setCurrentMessage(aiMessage);
+  
+      await handleAIResponse(aiResponse);
+      
+      setIsTyping(false);
     } catch (error) {
-      console.error('Mesaj hatası:', error);
-      const errorMessage: Message = {
-        id: Date.now() + 1,
-        content: 'Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.',
-        sender: 'ai',
-        type: 'error',
-      };
-      setMessages(prev => [...prev, errorMessage]);
-      setError('Mesaj gönderilemedi. Lütfen tekrar deneyin.');
-    } finally {
+      console.error('Mesaj gönderme hatası:', error);
+      setError('Mesajınız gönderilemedi. Lütfen tekrar deneyin.');
       setIsTyping(false);
     }
   };
-
+  
   const handleTopicChange = () => {
     if (!selectedLesson) return;
     const nextIndex = topicIndex + 1;
@@ -341,7 +346,6 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
     if (nextIndex < selectedLesson.topics.length) {
       setTopicIndex(nextIndex);
       
-      // Yeni topic başladığında bilgilendirme mesajı
       const topicMessage: Message = {
         id: Date.now(),
         content: `Harika! Şimdi "${selectedLesson.topics[nextIndex]}" konusuna geçiyoruz.`,
@@ -352,7 +356,6 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
       setMessages(prev => [...prev, topicMessage]);
       d_idService.sendNewText(topicMessage.content);
     } else if (nextIndex === selectedLesson.topics.length) {
-      // Tüm topicler tamamlandığında
       const completionMessage: Message = {
         id: Date.now(),
         content: `Tebrikler! "${selectedLesson.title}" dersini başarıyla tamamladın.`,
@@ -365,7 +368,6 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
       onLessonComplete?.();
     }
   };
-
   const toggleCamera = () => {
     setIsCameraActive(prev => !prev);
     if (videoRef.current) {
@@ -388,40 +390,59 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
     }
   };
 
-  const toggleRecording = async () => {
-    if (!isRecording) {
-      setIsRecording(true);
-      setIsTranscribing(true);
-      
-      // Ses tanıma sistemini başlat
-      speechRecognition.startListening((text) => {
-        setInputMessage((prev) => prev + ' ' + text);
-        if (text.trim().endsWith('.')) {
-          handleSendMessage();
-        }
-      });
-
-      // Ses analizi başlat
-      const started = await audioAnalyzer.startRecording();
-      if (started) {
-        startAnalysis();
-      }
-    } else {
-      setIsRecording(false);
-      setIsTranscribing(false);
-      speechRecognition.stopListening();
-      audioAnalyzer.stopRecording();
-      setIsAnalyzing(false);
-    }
-  };
+        const toggleRecording = async () => {
+          try {
+            if (!isRecording) {
+              setIsRecording(true);
+              setIsTranscribing(true);
+              
+              // Önce ses analizi başlat
+              const started = await audioAnalyzer.startRecording();
+              if (!started) {
+                throw new Error('Mikrofon başlatılamadı');
+              }
+        
+              // Sonra ses tanıma başlat
+              await speechRecognition.startListening((text) => {
+                console.log('Recognized text:', text);
+                // Yeni text'i input'a eklerken boşlukları düzgün yönet
+                setInputMessage((prev) => {
+                  const newText = prev.trim() + ' ' + text.trim();
+                  // Cümle bittiyse otomatik gönder
+                  if (text.match(/[.!?]$/)) {
+                    setTimeout(() => handleSendMessage(), 500);
+                  }
+                  return newText;
+                });
+                
+                // Dinleme animasyonunu göster
+                setIsTranscribing(true);
+              });
+        
+              startAnalysis();
+            } else {
+              audioAnalyzer.stopRecording();
+              speechRecognition.stopListening();
+              setIsRecording(false);
+              setIsTranscribing(false);
+              setIsAnalyzing(false);
+            }
+          } catch (error) {
+            console.error('Mikrofon hatası:', error);
+            setError('Mikrofon erişimi sağlanamadı. Lütfen izinleri kontrol edin.');
+            setIsRecording(false);
+            setIsTranscribing(false);
+            setIsAnalyzing(false);
+          }
+        };
 
   const startAnalysis = () => {
     setIsAnalyzing(true);
     let animationFrameId: number;
-
+  
     const analyzeLoop = async () => {
       if (!isAnalyzing) return;
-
+  
       const audioData = await audioAnalyzer.analyzeAudio();
       if (audioData) {
         const analysis = await musicAIServiceInstance.analyzePerformance(
@@ -431,12 +452,12 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
         );
         setPerformanceAnalysis(analysis);
       }
-
+  
       animationFrameId = requestAnimationFrame(analyzeLoop);
     };
-
+  
     analyzeLoop();
-
+  
     return () => {
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
@@ -444,10 +465,28 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
     };
   };
 
-  if (!isMounted) return null;
+  const handleAIResponse = async (response: string) => {
+    if (!isStreamActive) return;
+
+    try {
+      await Promise.all([
+        d_idService.sendNewText(response),
+        // Eğer ayrı bir ses servisi kullanacaksak:
+        // audioService.playResponse(response)
+      ]);
+    } catch (error) {
+      console.error('AI yanıt hatası:', error);
+      setError('Öğretmen yanıtı gösterilirken bir hata oluştu.');
+    }
+  };
+
+  if (!isMounted) return <></>;
 
   return (
-    <div className="flex flex-col h-[90vh] bg-white rounded-xl overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
+      <div className="container h-[90vh] max-w-7xl bg-white rounded-2xl overflow-hidden">
+      </div>
+      {/* Header */}
       <div className="bg-blue-600 text-white p-4">
         <div className="flex justify-between items-center">
           <div>
@@ -472,14 +511,28 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
         </div>
       </div>
 
+      {/* Video/Visual Container */}
       <div className="relative flex-1 bg-gray-900 video-container">
+        {/* D-ID video stream'i */}
         <video
           ref={videoRef}
           autoPlay
           playsInline
-          className={`w-full h-full object-cover ${!isCameraActive ? 'hidden' : ''}`}
+          className={`w-full h-full object-cover ${!isCameraActive || !isStreamActive ? 'hidden' : ''}`}
         />
 
+        {/* TeacherVisual görünümü */}
+        <div className={`absolute inset-0 ${!isCameraActive || isStreamActive ? 'hidden' : 'block'}`}>
+          <TeacherVisual
+            instrument={instrument as 'gitar' | 'piyano' | 'bateri'}
+            currentAction={currentMessage?.action || ''}
+            isTeaching={isTyping}
+            lessonContent={selectedLesson?.content}
+            currentPerformance={performanceAnalysis}
+          />
+        </div>
+
+        {/* Loading State */}
         {!isStreamActive && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75">
             <div className="text-white flex flex-col items-center">
@@ -489,18 +542,21 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
           </div>
         )}
 
+        {/* Error Message */}
         {error && (
           <div className="absolute top-16 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg">
             {error}
           </div>
         )}
 
+        {/* Recording Indicator */}
         {isTranscribing && (
           <div className="absolute bottom-28 left-4 bg-blue-500 text-white px-3 py-1 rounded-full text-sm">
             Sizi dinliyorum...
           </div>
         )}
 
+        {/* Control Buttons */}
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
           <button 
             onClick={toggleRecording}
@@ -525,8 +581,10 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
           </button>
         </div>
 
+        {/* Performance Analysis */}
         {performanceAnalysis && <RealTimeAnalysis analysis={performanceAnalysis} />}
 
+        {/* Close Button */}
         <button 
           onClick={onClose}
           className="absolute top-4 right-4 p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
@@ -547,60 +605,45 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
         </button>
       </div>
 
+      {/* Chat Section */}
       <div className="h-1/3 border-t">
         <div className="flex flex-col h-full">
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4">
+        <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 h-[40vh]"> 
             {messages.map((message) => (
               <div 
                 key={message.id}
-                className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'} mb-4`}
+                className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'} mb-4 animate-slideIn`}
               >
+                {message.sender === 'ai' && (
+                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center mr-2">
+                    <Music className="w-4 h-4 text-white" />
+                  </div>
+                )}
                 <div 
-                  className={`p-3 rounded-lg max-w-[70%] ${
+                  className={`p-4 rounded-lg max-w-[80%] ${
                     message.type === 'error' ? 'bg-red-100 text-red-700' :
-                    message.sender === 'ai' ? 'bg-blue-100 text-gray-800' : 
-                    'bg-blue-600 text-white'
+                    message.sender === 'ai' ? 'bg-blue-100 text-gray-800' : 'bg-gray-100 text-gray-800'
                   }`}
                 >
                   {message.content}
                 </div>
               </div>
             ))}
-
-            {isTyping && (
-              <div className="flex items-center space-x-2 text-gray-500">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
-              </div>
-            )}
           </div>
-
-          <div className="p-4 border-t">
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
-                placeholder={`${studentName}, mesajınızı yazın...`}
-                className="flex-1 p-2 border rounded-lg focus:outline-none focus:border-blue-600"
-                style={{ color: '#000' }} // Yazı rengini koyu yapmak için
-                disabled={isTyping}
-              />
-              <button 
-                onClick={handleSendMessage}
-                disabled={isTyping || !inputMessage.trim()}
-                className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </div>
+          <div className="p-4 border-t flex items-center">
+            <input 
+              type="text" 
+              value={inputMessage} 
+              onChange={(e) => setInputMessage(e.target.value)} 
+              className="flex-1 p-2 border rounded-lg"
+              placeholder="Mesajınızı yazın..."
+            />
+            <button 
+              onClick={handleSendMessage}
+              className="ml-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Send className="w-6 h-6" />
+            </button>
           </div>
         </div>
       </div>
