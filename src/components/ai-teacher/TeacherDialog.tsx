@@ -484,168 +484,121 @@ useEffect(() => {
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
-      <div className="container h-[90vh] max-w-7xl bg-white rounded-2xl overflow-hidden">
-      </div>
-      {/* Header */}
-      <div className="bg-blue-600 text-white p-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-xl font-bold">
-              {selectedLesson?.title || `${instrument} Dersi`}
-            </h2>
-            <p className="text-sm opacity-90">
-              {selectedLesson?.topics[topicIndex]}
-            </p>
-          </div>
-          {selectedLesson && (
-            <div className="flex items-center gap-2">
-              <div className="text-sm">İlerleme:</div>
-              <div className="w-32 h-2 bg-blue-800 rounded-full">
-                <div 
-                  className="h-full bg-white rounded-full transition-all duration-300"
-                  style={{ width: `${lessonProgress}%` }}
-                />
-              </div>
+      <div className="container max-w-7xl h-[90vh] bg-white rounded-2xl overflow-hidden flex flex-col">
+        {/* Header */}
+        <header className="bg-blue-600 text-white p-4 shrink-0">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-xl font-bold">
+                {selectedLesson?.title || `${instrument} Dersi`}
+              </h2>
+              <p className="text-sm opacity-90">
+                {selectedLesson?.topics[topicIndex]}
+              </p>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Video/Visual Container */}
-      <div className="relative flex-1 bg-gray-900 video-container">
-        {/* D-ID video stream'i */}
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          className={`w-full h-full object-cover ${!isCameraActive || !isStreamActive ? 'hidden' : ''}`}
-        />
-
-        {/* TeacherVisual görünümü */}
-        <div className={`absolute inset-0 ${!isCameraActive || isStreamActive ? 'hidden' : 'block'}`}>
-          <TeacherVisual
-            instrument={instrument as 'gitar' | 'piyano' | 'bateri'}
-            currentAction={currentMessage?.action || ''}
-            isTeaching={isTyping}
-            lessonContent={selectedLesson?.content}
-            currentPerformance={performanceAnalysis}
-          />
-        </div>
-
-        {/* Loading State */}
-        {!isStreamActive && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75">
-            <div className="text-white flex flex-col items-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4" />
-              <div className="text-lg">Öğretmen bağlanıyor...</div>
-            </div>
-          </div>
-        )}
-
-        {/* Error Message */}
-        {error && (
-          <div className="absolute top-16 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg">
-            {error}
-          </div>
-        )}
-
-        {/* Recording Indicator */}
-        {isTranscribing && (
-          <div className="absolute bottom-28 left-4 bg-blue-500 text-white px-3 py-1 rounded-full text-sm">
-            Sizi dinliyorum...
-          </div>
-        )}
-
-        {/* Control Buttons */}
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
-          <button 
-            onClick={toggleRecording}
-            className={`p-3 ${isRecording ? 'bg-red-600' : 'bg-gray-800'} rounded-full hover:opacity-90 transition-opacity`}
-            title={isRecording ? 'Kaydı Durdur' : 'Kayda Başla'}
-          >
-            <Mic className="w-6 h-6 text-white" />
-          </button>
-          <button 
-            onClick={toggleCamera}
-            className={`p-3 ${isCameraActive ? 'bg-blue-600' : 'bg-gray-800'} rounded-full hover:opacity-90 transition-opacity`}
-            title={isCameraActive ? 'Kamerayı Kapat' : 'Kamerayı Aç'}
-          >
-            <Camera className="w-6 h-6 text-white" />
-          </button>
-          <button 
-            onClick={toggleFullScreen}
-            className="p-3 bg-gray-800 rounded-full hover:opacity-90 transition-opacity"
-            title={isFullscreen ? 'Tam Ekrandan Çık' : 'Tam Ekran'}
-          >
-            <Maximize className="w-6 h-6 text-white" />
-          </button>
-        </div>
-
-        {/* Performance Analysis */}
-        {performanceAnalysis && <RealTimeAnalysis analysis={performanceAnalysis} />}
-
-        {/* Close Button */}
-        <button 
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
-        >
-          <svg 
-            className="w-6 h-6 text-white" 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M6 18L18 6M6 6l12 12" 
-            />
-          </svg>
-        </button>
-      </div>
-
-      {/* Chat Section */}
-      <div className="h-1/3 border-t">
-        <div className="flex flex-col h-full">
-        <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 h-[40vh]"> 
-            {messages.map((message) => (
-              <div 
-                key={message.id}
-                className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'} mb-4 animate-slideIn`}
-              >
-                {message.sender === 'ai' && (
-                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center mr-2">
-                    <Music className="w-4 h-4 text-white" />
+            <div className="flex items-center gap-4">
+              {selectedLesson && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">İlerleme:</span>
+                  <div className="w-32 h-2 bg-blue-800 rounded-full">
+                    <div 
+                      className="h-full bg-white rounded-full transition-all"
+                      style={{ width: `${lessonProgress}%` }}
+                    />
                   </div>
-                )}
-                <div 
-                  className={`p-4 rounded-lg max-w-[80%] ${
-                    message.type === 'error' ? 'bg-red-100 text-red-700' :
-                    message.sender === 'ai' ? 'bg-blue-100 text-gray-800' : 'bg-gray-100 text-gray-800'
-                  }`}
-                >
-                  {message.content}
                 </div>
-              </div>
-            ))}
+              )}
+              <button 
+                onClick={onClose}
+                className="p-2 hover:bg-blue-700 rounded-full transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
           </div>
-          <div className="p-4 border-t flex items-center">
-            <input 
-              type="text" 
-              value={inputMessage} 
-              onChange={(e) => setInputMessage(e.target.value)} 
-              className="flex-1 p-2 border rounded-lg"
-              placeholder="Mesajınızı yazın..."
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 grid grid-cols-[1fr,1fr,1fr] gap-4 p-4 min-h-0">
+          {/* Video/Visual Container */}
+          <div className="relative bg-gray-900 rounded-xl overflow-hidden">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              className={`w-full h-full object-cover ${!isCameraActive || !isStreamActive ? 'hidden' : ''}`}
             />
-            <button 
-              onClick={handleSendMessage}
-              className="ml-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Send className="w-6 h-6" />
-            </button>
+            
+            <TeacherVisual
+              className={`absolute inset-0 ${!isCameraActive || isStreamActive ? 'hidden' : 'block'}`}
+              instrument={instrument as 'gitar' | 'piyano' | 'bateri'}
+              currentAction={currentMessage?.action || ''}
+              isTeaching={isTyping}
+              lessonContent={selectedLesson?.content}
+              currentPerformance={performanceAnalysis}
+            />
+
+            {/* Controls */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3">
+              <button 
+                onClick={toggleRecording}
+                className={`p-3 rounded-full hover:opacity-90 transition-colors ${
+                  isRecording ? 'bg-red-600' : 'bg-gray-800'
+                }`}
+              >
+                <Mic className="w-6 h-6 text-white" />
+              </button>
+              <button onClick={toggleCamera} className="p-3 bg-gray-800 rounded-full">
+                <Camera className="w-6 h-6 text-white" />
+              </button>
+              <button onClick={toggleFullScreen} className="p-3 bg-gray-800 rounded-full">
+                <Maximize className="w-6 h-6 text-white" />
+              </button>
+            </div>
+
+            {performanceAnalysis && <RealTimeAnalysis analysis={performanceAnalysis} />}
           </div>
-        </div>
+
+          {/* Chat Section */}
+          <div className="flex flex-col bg-gray-50 rounded-xl overflow-hidden">
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+              {messages.map((message) => (
+                <div 
+                  key={message.id}
+                  className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'}`}
+                >
+                  {message.sender === 'ai' && (
+                    <div className="w-8 h-8 rounded-full bg-blue-600 flex-shrink-0 flex items-center justify-center mr-2">
+                      <Music className="w-4 h-4 text-white" />
+                    </div>
+                  )}
+                  <div className={`p-3 rounded-lg max-w-[80%] ${
+                    message.sender === 'ai' ? 'bg-white' : 'bg-blue-600 text-white'
+                  }`}>
+                    {message.content}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="p-4 bg-white border-t flex gap-2">
+              <input 
+                type="text"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                className="flex-1 px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500"
+                placeholder="Mesajınızı yazın..."
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={isTyping}
+                className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                <Send className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+        </main>
       </div>
     </div>
   );
