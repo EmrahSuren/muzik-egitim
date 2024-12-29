@@ -1,33 +1,52 @@
 // src/types/ai-teacher.ts
 
-
-
-// Message interface'i
+// Base Message Types
 export interface Message {
   id: number;
   content: string;
   sender: 'ai' | 'user';
-  type: 'text' | 'link' | 'error';
+  type: 'text' | 'link' | 'error' | 'option';
   url?: string;
   timestamp?: string;
   action?: string;
+  optionId?: string;
+  next?: string;
 }
 
-// TeacherDialog Props interface'i
+// Dialog Types
+export interface DialogOption {
+  id: string;
+  text: string;
+  next: string;
+}
+
+export interface DialogStep {
+  id: string;
+  type: string;
+  content: string;
+  options?: DialogOption[];
+  action?: string;
+  nextDialogId?: string;
+}
+
+// Teacher Types
 export interface TeacherDialogProps {
   studentName: string;
-  instrument: string;
-  teacherGender: 'male' | 'female';  // teacherGender eklendi
+  instrument: 'gitar' | 'piyano' | 'bateri';
+  teacherGender: 'male' | 'female';
   onClose: () => void;
 }
 
-// TeacherSelection Props interface'i
+export interface ExtendedTeacherDialogProps extends TeacherDialogProps {
+  selectedLesson?: Lesson;
+  onLessonComplete?: () => void;
+}
+
 export interface TeacherSelectionProps {
   onClose: () => void;
   onSelectTeacher: (teacher: Teacher) => void;
 }
 
-// Teacher interface'i
 export interface Teacher {
   id: number;
   name: string;
@@ -40,10 +59,7 @@ export interface Teacher {
   gender: 'male' | 'female';
 }
 
-// src/types/ai-teacher.ts
-
-// Existing interfaces remain the same...
-
+// Lesson Types
 export interface Lesson {
   id: number;
   title: string;

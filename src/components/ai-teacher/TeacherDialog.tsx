@@ -3,7 +3,6 @@
 
 import { useState, useRef, useEffect, ReactNode, JSX } from 'react';
 import { Mic, Camera, Maximize, Send, Music, X } from 'lucide-react';
-import type { Message, TeacherDialogProps } from '@/types/ai-teacher';
 import type { Lesson } from '@/data/lessons';
 import { d_idService } from '@/services/d-id';
 import { openAIServiceInstance } from '@/services/openai';
@@ -12,6 +11,11 @@ import { AudioAnalyzer } from '@/services/audio-analyzer';
 import type { MusicAnalysis } from '@/types/music-analysis';
 import { SpeechRecognitionService } from '@/services/speech-recognition';
 import { TeacherVisual } from '@/components/interactive-teacher/TeacherVisual';
+import { curriculum } from '@/data/curriculum';
+import { teacherDialogs } from '@/data/teacherDialogs';
+import type { Message, TeacherDialogProps, DialogOption, DialogStep } from '@/types/ai-teacher';
+
+
 
 interface ExtendedTeacherDialogProps extends TeacherDialogProps {
   selectedLesson?: Lesson;
@@ -33,6 +37,7 @@ interface LessonSegment {
     }[];
   };
 }
+
 const RealTimeAnalysis = ({ analysis }: { analysis: MusicAnalysis }): JSX.Element => {
   return (
     <div className="absolute top-4 left-4 bg-black bg-opacity-75 p-4 rounded-lg text-white">
@@ -118,6 +123,14 @@ const TeacherDialog: React.FC<ExtendedTeacherDialogProps> = ({
   const [speechRecognition] = useState(() => new SpeechRecognitionService());
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [currentMessage, setCurrentMessage] = useState<Message | null>(null);
+  const [currentDialogId, setCurrentDialogId] = useState('greeting-1');
+  const [currentStep, setCurrentStep] = useState(0);
+  const [lessonStarted, setLessonStarted] = useState(false);
+  const [currentDialog, setCurrentDialog] = useState<DialogStep | null>(null);
+  const [selectedInstrument, setSelectedInstrument] = useState<'gitar' | 'piyano' | 'bateri'>(instrument);
+  const [userLevel, setUserLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner');
+  
+  
 
   // Ref tanımlamaları
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -238,6 +251,12 @@ useEffect(() => {
   const getLessonPrompt = (userMessage: string) => {
     if (!selectedLesson) return userMessage;
 
+    // Müfredat ve ders bilgilerini al
+    const curriculumData = curriculum[instrument as keyof typeof curriculum];
+    const currentLesson = curriculumData?.beginner.lessons.find(
+        lesson => lesson === selectedLesson.id
+    );
+    
     const analysisPrompt = performanceAnalysis ? `
       PERFORMANS ANALİZİ:
       Ritim:
@@ -257,56 +276,109 @@ useEffect(() => {
     ` : '';
 
     return `
-      Sen deneyimli bir ${instrument} öğretmenisin ve aşağıdaki özel bilgileri kullanarak yanıt vermelisin:
+      Sen şu anda bir ${instrument} öğretmenisin. Öğrencinin şu anki durumu:
 
-      DERS BİLGİLERİ:
-      Ders: "${selectedLesson.title}"
-      Seviye: ${selectedLesson.level}
-      Mevcut Konu: ${selectedLesson.topics[topicIndex]}
+      DERS DETAYLARI:
+      - Ders: ${selectedLesson.title}
+      - Seviye: ${selectedLesson.level}
+      - Mevcut Konu: ${selectedLesson.topics[topicIndex]}
       
       HEDEFLER:
-      ${selectedLesson.objectives.join('\n')}
+      ${selectedLesson.objectives.map(obj => `- ${obj}`).join('\n')}
+
+      MÜFREDAT YAPISI:
+      ${curriculumData?.beginner.description}
+      Öğrenme Yolu: ${curriculumData?.beginner.learningPath[topicIndex].focus}
+      Pratik Hedefi: ${curriculumData?.beginner.learningPath[topicIndex].practiceGoals}
 
       ${analysisPrompt}
 
-      MÜZİK TEORİSİ VE TEKNİK:
-      1. Temel Müzik Bilgisi:
-      - Nota okuma ve yazma
-      - Ritim kalıpları
-      - Temel müzik teorisi
+      ÖĞRETMEN NOTLARI:
+      - Öğrencinin seviyesine uygun açıklamalar yap
+      - Her açıklamadan sonra pratik önerileri ver
+      - Hataları nazikçe düzelt
+      - Motive edici ol
 
-      2. Enstrüman Teknikleri:
-      - Doğru tutuş ve duruş
-      - Temel çalım teknikleri
-      - İleri seviye teknikler
+      Öğrenci sorusu/mesajı: "${userMessage}"
 
-      3. Performans Değerlendirmesi:
-      - Ritim doğruluğu ve kontrol
-      - Ton temizliği ve tını kalitesi
-      - Müzikal ifade ve dinamikler
-
-      4. Pratik Önerileri:
-      - Metronom ile çalışma
-      - Teknik egzersizler
-      - Örnek parça çalışmaları
-
-      Öğrenci sorusu: ${userMessage}
-
-      Lütfen yanıtını:
-      1. Teorik açıklama
-      2. Pratik uygulama önerileri
-      3. Performans değerlendirmesi
-      4. Sonraki adım için öneriler
+      Lütfen cevabını:
+      1. Nazik bir açıklama
+      2. Pratik önerisi
+      3. Motive edici bir kapanış
       şeklinde yapılandır.
     `;
   };
 
+  const handleDialogFlow = async () => {
+    console.log('Dialog Flow Started - Current Step:', currentStep);
+    console.log('Selected Instrument:', selectedInstrument);
+    console.log('User Level:', userLevel);
+    
+    const dialogData = teacherDialogs.lessons?.[selectedInstrument];
+    if (!dialogData || !dialogData[userLevel]) {
+        console.log('No dialog data found for instrument/level');
+        return;
+    }
+ 
+    const currentDialogSteps = dialogData[userLevel]?.intro[0]?.steps;
+    console.log('Current Dialog Steps:', currentDialogSteps);
+ 
+    const dialogStep = currentDialogSteps?.[currentStep];
+    
+    if (!dialogStep) {
+        console.log('No dialog step found, returning');
+        return;
+    }
+ 
+    setCurrentDialog(dialogStep);
+    console.log('Setting Current Dialog:', dialogStep);
+    
+    const aiMessage: Message = {
+        id: Date.now(),
+        content: dialogStep.content,
+        sender: 'ai',
+        type: 'text',
+        action: dialogStep.action
+    };
+    console.log('Created AI Message:', aiMessage);
+ 
+    if (dialogStep.options) {
+        console.log('Dialog has options:', dialogStep.options);
+        const optionMessages: Message[] = dialogStep.options.map((opt: DialogOption) => ({
+            id: Date.now() + Math.random(),
+            content: opt.text,
+            sender: 'ai',
+            type: 'option',
+            optionId: opt.id,
+            next: opt.next
+        }));
+        
+        console.log('Created Option Messages:', optionMessages);
+        setMessages(prev => [...prev, aiMessage, ...optionMessages]);
+    } else {
+        console.log('No options, setting single message');
+        setMessages(prev => [...prev, aiMessage]);
+    }
+ 
+    setCurrentMessage(aiMessage);
+    console.log('Set Current Message');
+    
+    await handleAIResponse(aiMessage.content);
+    console.log('Handled AI Response');
+ 
+    if (dialogStep.nextDialogId) {
+        console.log('Found next dialog, will proceed in 3 seconds:', dialogStep.nextDialogId);
+        setTimeout(() => {
+            setCurrentStep(prev => prev + 1);
+            console.log('Moved to next step');
+        }, 3000);
+    }
+ };
+  
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isTyping) return;
   
     try {
-
-      
       const userMessage: Message = {
         id: Date.now(),
         content: inputMessage,
@@ -317,19 +389,35 @@ useEffect(() => {
       setInputMessage('');
       setIsTyping(true);
   
-      const prompt = getLessonPrompt(inputMessage);
-      const aiResponse = await openAIServiceInstance.getMusicTeacherResponse(instrument, prompt);
+      if (!lessonStarted && inputMessage.toLowerCase().match(/hazır|başla|evet|öğret/)) {
+        setLessonStarted(true);
+        await handleDialogFlow();
+      } else if (currentDialog?.options) {
+        const selectedOption = currentDialog.options.find(
+          opt => inputMessage.toLowerCase().includes(opt.text.toLowerCase())
+        );
+        if (selectedOption) {
+          setCurrentStep(prev => prev + 1);
+          await handleDialogFlow();
+        }
+      } else {
+        const prompt = getLessonPrompt(inputMessage);
+        const aiResponse = await openAIServiceInstance.getMusicTeacherResponse(
+          instrument as 'gitar' | 'piyano' | 'bateri',
+          prompt
+        );
   
-      const aiMessage: Message = {
-        id: Date.now() + 1,
-        content: aiResponse,
-        sender: 'ai',
-        type: 'text',
-      };
-      setMessages(prev => [...prev, aiMessage]);
-      setCurrentMessage(aiMessage);
-  
-      await handleAIResponse(aiResponse);
+        const aiMessage: Message = {
+          id: Date.now() + 1,
+          content: aiResponse,
+          sender: 'ai',
+          type: 'text',
+        };
+        
+        setMessages(prev => [...prev, aiMessage]);
+        setCurrentMessage(aiMessage);
+        await handleAIResponse(aiResponse);
+      }
       
       setIsTyping(false);
     } catch (error) {
@@ -483,10 +571,10 @@ useEffect(() => {
   if (!isMounted) return <></>;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center">
       <div className="container max-w-7xl h-[90vh] bg-white rounded-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <header className="bg-blue-600 text-white p-4 shrink-0">
+        <header className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white p-4 shrink-0">
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-xl font-bold">
@@ -500,7 +588,7 @@ useEffect(() => {
               {selectedLesson && (
                 <div className="flex items-center gap-2">
                   <span className="text-sm">İlerleme:</span>
-                  <div className="w-32 h-2 bg-blue-800 rounded-full">
+                  <div className="w-32 h-2 bg-indigo-800/50 rounded-full">
                     <div 
                       className="h-full bg-white rounded-full transition-all"
                       style={{ width: `${lessonProgress}%` }}
@@ -510,17 +598,17 @@ useEffect(() => {
               )}
               <button 
                 onClick={onClose}
-                className="p-2 hover:bg-blue-700 rounded-full transition-colors"
+                className="p-2 hover:bg-black/20 rounded-full transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
           </div>
         </header>
-
-        {/* Main Content */}
+  
+        {/* Main Content - 3 Column Layout */}
         <main className="flex-1 grid grid-cols-[1fr,1fr,1fr] gap-4 p-4 min-h-0">
-          {/* Video/Visual Container */}
+          {/* AI Teacher Video */}
           <div className="relative bg-gray-900 rounded-xl overflow-hidden">
             <video
               ref={videoRef}
@@ -529,38 +617,69 @@ useEffect(() => {
               className={`w-full h-full object-cover ${!isCameraActive || !isStreamActive ? 'hidden' : ''}`}
             />
             
-            <TeacherVisual
-              className={`absolute inset-0 ${!isCameraActive || isStreamActive ? 'hidden' : 'block'}`}
-              instrument={instrument as 'gitar' | 'piyano' | 'bateri'}
-              currentAction={currentMessage?.action || ''}
-              isTeaching={isTyping}
-              lessonContent={selectedLesson?.content}
-              currentPerformance={performanceAnalysis}
-            />
-
+            <div className={`absolute inset-0 ${!isCameraActive || isStreamActive ? 'hidden' : 'block'}`}>
+              <TeacherVisual
+                instrument={instrument}
+                currentAction={currentMessage?.action || ''}
+                isTeaching={isTyping}
+                lessonContent={{
+                  type: 'exercise',
+                  title: selectedLesson?.title || '',
+                  content: selectedLesson?.objectives[0] || '',
+                  visualAids: []
+                }}
+                currentPerformance={performanceAnalysis ? {
+                 accuracy: performanceAnalysis.rhythm.accuracy,
+                 rhythm: performanceAnalysis.rhythm.accuracy,
+                 tempo: performanceAnalysis.rhythm.tempo,
+                 suggestions: performanceAnalysis.performance.improvements
+                } : undefined}
+               />
+            </div>
+  
             {/* Controls */}
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3">
               <button 
-                onClick={toggleRecording}
+                onMouseDown={() => toggleRecording()}
+                onMouseUp={() => {
+                  if (isRecording) {
+                    handleSendMessage();
+                    toggleRecording();
+                  }
+                }}
                 className={`p-3 rounded-full hover:opacity-90 transition-colors ${
                   isRecording ? 'bg-red-600' : 'bg-gray-800'
                 }`}
+                title={isRecording ? 'Kaydı Durdur' : 'Basılı Tutarak Konuşun'}
               >
                 <Mic className="w-6 h-6 text-white" />
               </button>
-              <button onClick={toggleCamera} className="p-3 bg-gray-800 rounded-full">
+              <button 
+                onClick={toggleCamera} 
+                className={`p-3 rounded-full hover:opacity-90 transition-colors ${
+                  isCameraActive ? 'bg-indigo-600' : 'bg-gray-800'
+                }`}
+              >
                 <Camera className="w-6 h-6 text-white" />
               </button>
-              <button onClick={toggleFullScreen} className="p-3 bg-gray-800 rounded-full">
+              <button 
+                onClick={toggleFullScreen} 
+                className="p-3 bg-gray-800 rounded-full hover:opacity-90 transition-colors"
+              >
                 <Maximize className="w-6 h-6 text-white" />
               </button>
             </div>
-
+  
             {performanceAnalysis && <RealTimeAnalysis analysis={performanceAnalysis} />}
           </div>
-
+  
+          {/* Visual Content Area */}
+          <div className="bg-gray-50 rounded-xl overflow-hidden p-4">
+            {/* Visual content will be here */}
+          </div>
+  
           {/* Chat Section */}
-          <div className="flex flex-col bg-gray-50 rounded-xl overflow-hidden">
+          <div className="flex flex-col bg-white rounded-xl overflow-hidden border">
             <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3">
               {messages.map((message) => (
                 <div 
@@ -568,17 +687,27 @@ useEffect(() => {
                   className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'}`}
                 >
                   {message.sender === 'ai' && (
-                    <div className="w-8 h-8 rounded-full bg-blue-600 flex-shrink-0 flex items-center justify-center mr-2">
+                    <div className="w-8 h-8 rounded-full bg-indigo-600 flex-shrink-0 flex items-center justify-center mr-2">
                       <Music className="w-4 h-4 text-white" />
                     </div>
                   )}
-                  <div className={`p-3 rounded-lg max-w-[80%] ${
-                    message.sender === 'ai' ? 'bg-white' : 'bg-blue-600 text-white'
+                  <div className={`p-3 rounded-lg max-w-[80%] shadow-sm ${
+                    message.sender === 'ai' 
+                      ? 'bg-gray-100 text-gray-900 font-medium' 
+                      : 'bg-indigo-600 text-white font-medium'
                   }`}>
                     {message.content}
                   </div>
                 </div>
               ))}
+  
+              {isTyping && (
+                <div className="flex items-center space-x-2 p-2">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                </div>
+              )}
             </div>
             
             <div className="p-4 bg-white border-t flex gap-2">
@@ -586,13 +715,19 @@ useEffect(() => {
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                className="flex-1 px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                className="flex-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 font-medium"
                 placeholder="Mesajınızı yazın..."
               />
               <button
                 onClick={handleSendMessage}
-                disabled={isTyping}
-                className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                disabled={isTyping || !inputMessage.trim()}
+                className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
               >
                 <Send className="w-6 h-6" />
               </button>

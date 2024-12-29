@@ -20,7 +20,13 @@ export interface Lesson {
     weeklyProgress: {
       [key: string]: number; // günlük pratik süreleri
     };
-    level: 'beginner' | 'intermediate' | 'advanced';
+    performance?: {  // Performance özelliğini ekliyoruz
+      lastSession?: {
+        accuracy: number;
+        tempo: number;
+      };
+      level: 'beginner' | 'intermediate' | 'advanced';
+    };
     streak: number; // ardışık pratik günleri
     lastPracticeDate?: string;
   }

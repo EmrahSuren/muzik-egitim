@@ -1,7 +1,9 @@
-'use client';
-'use client';
+'use client'; // Bu duplicate 'use client' satırını silebiliriz
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { AuthService } from '@/services/authService';
+import { ProgressService } from '@/services/progressService';
+import { UserService } from '@/services/userService';
 
 export default function Login() {
     const [email, setEmail] = useState('');
@@ -44,22 +46,65 @@ export default function Login() {
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        if (!validateForm()) {
-            return;
-        }
+      e.preventDefault();
+      
+      if (!validateForm()) return;
+      setIsLoading(true);
+  
+      try {
+          // Giriş işlemi
+          const loginResponse = await AuthService.login(email, password);
+          
+          // Kullanıcı progress'i kontrol et
+          let userProgress = ProgressService.getProgress();
+          if (!userProgress) {
+              userProgress = ProgressService.initializeProgress(loginResponse.user.id);
+          }
+  
+          // Kullanıcı profili kontrol et
+          const userProfile = await UserService.getUserProfile(loginResponse.user.id);
+  
+          // Yönlendirme
+          if (!userProfile?.isOnboardingComplete) {
+              window.location.href = '/onboarding';
+          } else {
+              window.location.href = '/dashboard';
+          }
+  
+      } catch (error: any) {
+          console.error('Login error:', error);
+          setErrors({
+              ...errors,
+              email: error.message || 'Giriş bilgileri hatalı'
+          });
+      } finally {
+          setIsLoading(false);
+      }
+  };
 
-        setIsLoading(true);
-        try {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            window.location.href = '/dashboard';
-        } catch (error) {
-            console.error('Giriş hatası:', error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+  const handleGoogleLogin = async () => {
+    setIsLoading(true);
+    try {
+        // Google login implementasyonu gelecek
+        console.log('Google login clicked');
+    } catch (error) {
+        console.error('Google login error:', error);
+    } finally {
+        setIsLoading(false);
+    }
+};
+
+const handleAppleLogin = async () => {
+    setIsLoading(true);
+    try {
+        // Apple login implementasyonu gelecek
+        console.log('Apple login clicked');
+    } catch (error) {
+        console.error('Apple login error:', error);
+    } finally {
+        setIsLoading(false);
+    }
+};
 
 
   return (
@@ -140,8 +185,7 @@ export default function Login() {
   )}
 </button>
         </form>
-
-        {/* Social Login */}
+        
         {/* Social Login */}
 <div className="mt-8">
   <div className="relative">
@@ -154,33 +198,49 @@ export default function Login() {
   </div>
 
   <div className="mt-6 space-y-4">
-    <button 
-      className="w-full bg-black text-white rounded-lg p-3 
-        flex items-center justify-center gap-2 
-        transform transition-all duration-300
-        hover:bg-gray-800 hover:scale-[1.02] hover:shadow-lg"
-    >
-      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z"/>
-      </svg>
-      Apple ile devam et
-    </button>
+  <button 
+    onClick={handleAppleLogin}
+    disabled={isLoading}
+    className="w-full bg-black text-white rounded-lg p-3 
+      flex items-center justify-center gap-2 
+      transform transition-all duration-300
+      hover:bg-gray-800 hover:scale-[1.02] hover:shadow-lg"
+  >
+    {isLoading ? (
+      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+    ) : (
+      <>
+        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z"/>
+        </svg>
+        Apple ile devam et
+      </>
+    )}
+  </button>
 
-    <button 
-      className="w-full bg-white border border-gray-300 text-gray-700 
-        rounded-lg p-3 flex items-center justify-center gap-2 
-        transform transition-all duration-300
-        hover:bg-gray-50 hover:scale-[1.02] hover:shadow-lg"
-    >
-      <svg className="w-5 h-5" viewBox="0 0 24 24">
-        <path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/>
-        <path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.565 24 12.255 24z"/>
-        <path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 000 10.76l3.98-3.09z"/>
-        <path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0c-4.69 0-8.74 2.7-10.71 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"/>
-      </svg>
-      Google ile devam et
-    </button>
-  </div>
+  <button 
+    onClick={handleGoogleLogin}
+    disabled={isLoading}
+    className="w-full bg-white border border-gray-300 text-gray-700 
+      rounded-lg p-3 flex items-center justify-center gap-2 
+      transform transition-all duration-300
+      hover:bg-gray-50 hover:scale-[1.02] hover:shadow-lg"
+  >
+    {isLoading ? (
+      <div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"/>
+    ) : (
+      <>
+        <svg className="w-5 h-5" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/>
+          <path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.565 24 12.255 24z"/>
+          <path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 000 10.76l3.98-3.09z"/>
+          <path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0c-4.69 0-8.74 2.7-10.71 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"/>
+        </svg>
+        Google ile devam et
+      </>
+    )}
+  </button>
+ </div>
 </div>
 
         {/* Sign Up Link */}

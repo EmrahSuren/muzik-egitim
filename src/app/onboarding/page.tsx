@@ -7,8 +7,8 @@ import type { UserData, InstrumentType } from '@/types/user';
 
 export default function Onboarding() {
   const [step, setStep] = useState(1);
-  const [selectedInstrument, setSelectedInstrument] = useState<InstrumentType | ''>('');
-  const [practiceGoal, setPracticeGoal] = useState('');
+  const [selectedInstrument, setSelectedInstrument] = useState<InstrumentType | null>(null); 
+  const [practiceGoal, setPracticeGoal] = useState<PracticeGoalType | null>(null); 
   const [notifications, setNotifications] = useState(false);
   const [fullName, setFullName] = useState('');
   const [isClient, setIsClient] = useState(false);
@@ -17,9 +17,12 @@ export default function Onboarding() {
   useEffect(() => {
     setIsClient(true);
     // Eğer kullanıcı zaten kayıtlı ise dashboard'a yönlendir
-    const existingUser = UserService.getUserData();
-    if (existingUser) {
-      router.push('/dashboard');
+    const currentUserId = localStorage.getItem('currentUserId'); // Geçici çözüm
+    if (currentUserId) {
+      const userProfile = UserService.getUserProfile(currentUserId);
+      if (userProfile?.isOnboardingComplete) {
+        router.push('/dashboard');
+      }
     }
   }, [router]);
 
@@ -31,9 +34,9 @@ export default function Onboarding() {
   ];
 
   const instruments = [
-    { id: 'guitar' as InstrumentType, name: 'Gitar', icon: Guitar },
-    { id: 'piano' as InstrumentType, name: 'Piyano', icon: Piano },
-    { id: 'drums' as InstrumentType, name: 'Bateri', icon: Drum }
+    { id: 'gitar' as InstrumentType, name: 'Gitar', icon: Guitar },
+    { id: 'piyano' as InstrumentType, name: 'Piyano', icon: Piano },
+    { id: 'bateri' as InstrumentType, name: 'Bateri', icon: Drum }
   ];
 
   const practiceGoals = [
@@ -55,39 +58,71 @@ export default function Onboarding() {
   ];
 
   const handleNext = () => {
+    // Eğer son adımda değilsek, bir sonraki adıma geç
     if (step < 4) {
       setStep(step + 1);
     } else {
-      // Form validasyonu
-      if (!fullName.trim()) {
-        alert('Lütfen adınızı girin');
+      // Son adımdayız, tüm gerekli alanların dolu olduğundan emin olalım
+      if (!fullName.trim() || !selectedInstrument || !practiceGoal) {
+        alert('Lütfen tüm gerekli alanları doldurun');
         return;
       }
-
-      // Kullanıcı verilerini hazırla
-      const userData: UserData = {
-        instrument: selectedInstrument as InstrumentType,
-        practiceGoal,
-        notifications,
-        fullName: fullName.trim(),
-        registrationDate: new Date().toISOString(),
-        lastLoginDate: new Date().toISOString()
-      };
-
+  
       try {
-        // Verileri kaydet
-        UserService.saveUserData(userData);
+        // Geçici kullanıcı ID'si oluştur
+        // Bu ID gerçek uygulamada AuthService'den alınacak
+        const tempUserId = 'temp_' + Date.now();
 
-        // Başlangıç ilerleme verilerini oluştur
-        UserService.updateUserProgress({
-          totalPracticeTime: 0,
-          weeklyGoalProgress: 0,
-          completedLessons: 0,
-          currentLevel: 'beginner'
+        // Debug log ekleyelim
+  console.log('Saving user profile with ID:', tempUserId);
+  
+  const userProfile = UserService.updateUserProfile(tempUserId, {
+    fullName: fullName.trim(),
+    instrument: selectedInstrument,
+    practiceGoal,
+    isOnboardingComplete: true,
+    createdAt: new Date().toISOString()
+  });
+
+  console.log('Saved user profile:', userProfile);
+  
+        // UserProfile bilgilerini kaydet
+        // Yeni tip tanımlamalarına göre tüm zorunlu alanları içermeli
+        UserService.updateUserProfile(tempUserId, {
+          fullName: fullName.trim(),
+          instrument: selectedInstrument,
+          level: 'beginner', // Yeni kayıt olduğu için beginner
+          practiceGoal: practiceGoal as PracticeGoalType,
+          isOnboardingComplete: true,
+          createdAt: new Date().toISOString(),
+          notifications: notifications // Bildirim tercihi
         });
-
-        // Dashboard'a yönlendir
+  
+        // UserProgress verilerini başlat
+        // İlerleme takibi için başlangıç değerlerini ayarla
+        UserService.updateUserProgress(tempUserId, {
+          totalPracticeTime: 0,
+          weeklyProgress: {
+            [new Date().toISOString().split('T')[0]]: 0 // Bugün için başlangıç değeri
+          },
+          completedLessons: [], // Henüz ders tamamlanmadı
+          currentLesson: `${selectedInstrument}_101`, // İlk ders
+          level: 'beginner', // UserProfile ile tutarlı seviye
+          streak: 0,
+          lastPracticeDate: new Date().toISOString()
+        });
+  
+        // UserSettings'i yapılandır
+        // Kullanıcının tercih ettiği ayarları kaydet
+        UserService.updateUserSettings(tempUserId, {
+          notifications: notifications,
+          theme: 'light', // Varsayılan tema
+          language: 'tr' // Varsayılan dil
+        });
+  
+        // Tüm kayıtlar başarılı ise dashboard'a yönlendir
         router.push('/dashboard');
+  
       } catch (error) {
         console.error('Kayıt hatası:', error);
         alert('Bir hata oluştu. Lütfen tekrar deneyin.');
