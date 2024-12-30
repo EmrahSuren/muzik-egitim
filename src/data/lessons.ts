@@ -18,7 +18,7 @@ export const lessons = {
     beginner: [
       {
         id: 'gitar-101',
-        title: 'Gitara Giriş',
+        title: 'gitara Giriş',
         level: 'beginner',
         duration: 30,
         topics: [
